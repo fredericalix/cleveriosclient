@@ -861,7 +861,7 @@ struct ApplicationDetailView: View {
                 isLoading: isLoadingMetrics,
                 period: formatPeriodDisplay(selectedMetricsPeriod)
             )
-            
+
             MetricsGraphView(
                 title: "Network Out",
                 dataPoints: networkOutMetricsData,

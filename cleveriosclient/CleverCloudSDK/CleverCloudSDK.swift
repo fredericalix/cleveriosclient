@@ -387,9 +387,9 @@ public final class CleverCloudSDK: ObservableObject {
             .eraseToAnyPublisher()
     }
     
-    // MARK: - Network Groups Quick Access Methods
-    
-    /// Quick method to get all network groups for an organization
+    // MARK: - Network Groups Quick Access Methods - DISABLED until Clever Cloud stabilizes Network Groups
+
+    /// Quick method to get all network groups for an organization - DISABLED
     /// - Parameter organizationId: Organization identifier
     /// - Returns: Publisher with network groups array
     public func getNetworkGroups(for organizationId: String) -> AnyPublisher<[CCNetworkGroup], CCError> {
@@ -401,8 +401,8 @@ public final class CleverCloudSDK: ObservableObject {
             })
             .eraseToAnyPublisher()
     }
-    
-    /// Quick method to create a new network group
+
+    /// Quick method to create a new network group - DISABLED
     /// - Parameters:
     ///   - organizationId: Organization identifier
     ///   - name: Network group name
@@ -423,7 +423,7 @@ public final class CleverCloudSDK: ObservableObject {
             cidr: cidr,
             region: region
         )
-        
+
         return networkGroups.createNetworkGroup(organizationId: organizationId, networkGroup: networkGroupCreate)
             .handleEvents(receiveCompletion: { [weak self] completion in
                 if case .failure(let error) = completion {
@@ -432,8 +432,8 @@ public final class CleverCloudSDK: ObservableObject {
             })
             .eraseToAnyPublisher()
     }
-    
-    /// Quick method to get comprehensive network group data
+
+    /// Quick method to get comprehensive network group data - DISABLED
     /// - Parameters:
     ///   - organizationId: Organization identifier
     ///   - networkGroupId: Network group identifier
@@ -450,8 +450,8 @@ public final class CleverCloudSDK: ObservableObject {
             })
             .eraseToAnyPublisher()
     }
-    
-    /// Quick method to add an application to a network group
+
+    /// Quick method to add an application to a network group - DISABLED
     /// - Parameters:
     ///   - organizationId: Organization identifier
     ///   - networkGroupId: Network group identifier
@@ -474,8 +474,8 @@ public final class CleverCloudSDK: ObservableObject {
         })
         .eraseToAnyPublisher()
     }
-    
-    /// Quick method to get WireGuard configuration for a peer
+
+    /// Quick method to get WireGuard configuration for a peer - DISABLED
     /// - Parameters:
     ///   - organizationId: Organization identifier
     ///   - networkGroupId: Network group identifier

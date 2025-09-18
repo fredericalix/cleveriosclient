@@ -178,8 +178,9 @@ class NetworkGroupNotificationService: ObservableObject {
     
     private func checkNotificationPermissions() {
         notificationCenter.getNotificationSettings { [weak self] settings in
+            let isAuthorized = settings.authorizationStatus == .authorized
             DispatchQueue.main.async {
-                self?.isNotificationsEnabled = settings.authorizationStatus == .authorized
+                self?.isNotificationsEnabled = isAuthorized
             }
         }
     }

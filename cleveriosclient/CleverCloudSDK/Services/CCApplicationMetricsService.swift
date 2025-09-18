@@ -128,7 +128,7 @@ public class CCApplicationMetricsService: ObservableObject {
         .eraseToAnyPublisher()
     }
     
-    /// Get time series data for specific metric using Warp10
+    /// Get time series data for specific metric using v4 API or Warp10
     /// - Parameters:
     ///   - applicationId: The application ID
     ///   - organizationId: The organization ID (required for metrics)
@@ -143,36 +143,40 @@ public class CCApplicationMetricsService: ObservableObject {
         interval: String = "PT5M",
         span: String = "PT1H"
     ) -> AnyPublisher<[CCApplicationMetricPoint], CCError> {
-        
+
         print("📈 [CCApplicationMetricsService] Getting time series for metric '\(metric.rawValue)'")
         print("📈 [CCApplicationMetricsService] App: \(applicationId), Interval: \(interval), Span: \(span)")
-        print("📈 [CCApplicationMetricsService] ✅ Using v4 API directly like getApplicationMetrics")
-        
+
+        // For network metrics, use Warp10 directly as v4 API doesn't provide them
+        if metric == .networkIn || metric == .networkOut {
+            print("📈 [CCApplicationMetricsService] 🔄 Using Warp10 for network metrics")
+            return getNetworkMetricsFromWarp10(
+                applicationId: applicationId,
+                organizationId: organizationId,
+                metric: metric,
+                span: span
+            )
+        }
+
+        // For CPU and Memory, continue using v4 API which works well
+        print("📈 [CCApplicationMetricsService] ✅ Using v4 API for CPU/Memory metrics")
+
         // Build endpoint with query parameters - Use same endpoint as getApplicationMetrics
         let endpoint = "/stats/organisations/\(organizationId)/resources/\(applicationId)/metrics"
-        
-        // For network metrics, try without "only" parameter to see what metrics are available
-        var queryItems: [URLQueryItem]
-        if metric == .networkIn || metric == .networkOut {
-            // Don't use "only" for network metrics - we'll filter client-side
-            queryItems = [
-                URLQueryItem(name: "interval", value: interval),
-                URLQueryItem(name: "span", value: span)
-            ]
-        } else {
-            queryItems = [
-                URLQueryItem(name: "interval", value: interval),
-                URLQueryItem(name: "span", value: span),
-                URLQueryItem(name: "only", value: metric.rawValue) // Filter to specific metric
-            ]
-        }
+
+        let queryItems = [
+            URLQueryItem(name: "interval", value: interval),
+            URLQueryItem(name: "span", value: span),
+            URLQueryItem(name: "only", value: metric.rawValue) // Filter to specific metric
+        ]
+
         var urlComponents = URLComponents()
         urlComponents.queryItems = queryItems
         let queryString = urlComponents.query ?? ""
         let fullEndpoint = queryString.isEmpty ? endpoint : "\(endpoint)?\(queryString)"
-        
+
         print("📈 [CCApplicationMetricsService] OAuth 1.0a request to: \(fullEndpoint)")
-        
+
         return httpClient.getRawData(fullEndpoint, apiVersion: .v4)
             .tryMap { data in
                 RemoteLogger.shared.debug("[CleverMetrics] getApplicationTimeSeries response", metadata: [
@@ -180,7 +184,7 @@ public class CCApplicationMetricsService: ObservableObject {
                     "endpoint": fullEndpoint,
                     "metric": metric.rawValue
                 ])
-                
+
                 // Log the raw response to understand the format
                 if let jsonString = String(data: data, encoding: .utf8) {
                     RemoteLogger.shared.debug("[CleverMetrics] Raw time series response", metadata: [
@@ -188,7 +192,7 @@ public class CCApplicationMetricsService: ObservableObject {
                         "response": jsonString.prefix(1000).description
                     ])
                 }
-                
+
                 // Parse the time series response
                 return try self.parseTimeSeriesResponse(data: data, metricType: metric)
             }
@@ -200,11 +204,11 @@ public class CCApplicationMetricsService: ObservableObject {
             }
             .handleEvents(
                 receiveOutput: { dataPoints in
-                    print("✅ [CCApplicationMetricsService] SUCCESS! Received \(dataPoints.count) data points for metric \(metric.rawValue) from Warp10")
+                    print("✅ [CCApplicationMetricsService] SUCCESS! Received \(dataPoints.count) data points for metric \(metric.rawValue)")
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        print("❌ [CCApplicationMetricsService] Warp10 request failed: \(error)")
+                        print("❌ [CCApplicationMetricsService] Request failed: \(error)")
                     }
                 }
             )
@@ -252,7 +256,177 @@ public class CCApplicationMetricsService: ObservableObject {
     }
     
     // MARK: - Warp10 Integration
-    
+
+    /// Get network metrics from Warp10 directly
+    /// - Parameters:
+    ///   - applicationId: The application ID
+    ///   - organizationId: The organization ID
+    ///   - metric: The network metric type (networkIn or networkOut)
+    ///   - span: Time span in ISO8601 format
+    /// - Returns: Publisher with network metric data points
+    private func getNetworkMetricsFromWarp10(
+        applicationId: String,
+        organizationId: String,
+        metric: MetricType,
+        span: String
+    ) -> AnyPublisher<[CCApplicationMetricPoint], CCError> {
+
+        print("🌐 [CCApplicationMetricsService] Fetching network metrics from Warp10")
+        print("🌐 [CCApplicationMetricsService] Metric: \(metric.rawValue), App: \(applicationId)")
+
+        // Convert ISO8601 to Warp10 format
+        let warp10Span = convertToWarp10Period(span)
+
+        return warp10Client.getWarp10Token(organizationId: organizationId)
+            .flatMap { token -> AnyPublisher<[CCApplicationMetricPoint], CCError> in
+                // Create WarpScript for the specific network metric
+                let metricName = metric == .networkIn ? "net.bytes_recv" : "net.bytes_sent"
+
+                let warpScript = """
+                [ '\(token)' '\(metricName)' { 'app_id' '\(applicationId)' } NOW \(warp10Span) ] FETCH
+                """
+
+                print("🌐 [CCApplicationMetricsService] Executing WarpScript for metric: \(metricName)")
+
+                return self.warp10Client.executeWarpScript(warpScript)
+                    .tryMap { data in
+                        return try self.parseWarp10NetworkResponse(
+                            data: data,
+                            metricType: metric
+                        )
+                    }
+                    .mapError { error in
+                        if let ccError = error as? CCError {
+                            return ccError
+                        }
+                        return CCError.parsingError(error)
+                    }
+                    .eraseToAnyPublisher()
+            }
+            .handleEvents(
+                receiveOutput: { dataPoints in
+                    print("✅ [CCApplicationMetricsService] Warp10: Received \(dataPoints.count) network data points")
+                },
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        print("❌ [CCApplicationMetricsService] Warp10 network metrics failed: \(error)")
+                    }
+                }
+            )
+            .catch { error -> AnyPublisher<[CCApplicationMetricPoint], CCError> in
+                print("⚠️ [CCApplicationMetricsService] Warp10 network request failed, returning empty: \(error)")
+                return Just([])
+                    .setFailureType(to: CCError.self)
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+
+    /// Parse Warp10 network metrics response
+    /// - Parameters:
+    ///   - data: Raw response data from Warp10
+    ///   - metricType: The metric type being parsed
+    /// - Returns: Array of metric points
+    private func parseWarp10NetworkResponse(
+        data: Data,
+        metricType: MetricType
+    ) throws -> [CCApplicationMetricPoint] {
+
+        print("📊 [CCApplicationMetricsService] Parsing Warp10 network response")
+
+        // Log raw response for debugging
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📊 [CCApplicationMetricsService] Warp10 response: \(jsonString.prefix(500))")
+        }
+
+        // Warp10 returns nested arrays: [[{...}]]
+        guard let outerArray = try JSONSerialization.jsonObject(with: data) as? [Any] else {
+            print("❌ [CCApplicationMetricsService] Invalid Warp10 response format - not an array")
+            return []
+        }
+
+        var points: [CCApplicationMetricPoint] = []
+
+        // Process each GTS (GeoTime Series)
+        for element in outerArray {
+            guard let gtsArray = element as? [[String: Any]] else {
+                print("⚠️ [CCApplicationMetricsService] Skipping non-GTS element")
+                continue
+            }
+
+            for gts in gtsArray {
+                guard let className = gts["c"] as? String,
+                      let values = gts["v"] as? [[Any]] else {
+                    print("⚠️ [CCApplicationMetricsService] Skipping malformed GTS")
+                    continue
+                }
+
+                print("📊 [CCApplicationMetricsService] Processing GTS '\(className)' with \(values.count) data points")
+
+                // Parse each value: [timestamp, latitude, longitude, elevation, value]
+                var previousTimestamp: Double?
+                var previousValue: Double?
+
+                for valueArray in values {
+                    // Warp10 format: [timestamp, lat, lon, elev, value] or just [timestamp, value]
+                    let timestamp: Double
+                    let value: Double
+
+                    if valueArray.count >= 5 {
+                        // Full GeoTime format
+                        guard let ts = valueArray[0] as? Double,
+                              let val = valueArray[4] as? Double else {
+                            continue
+                        }
+                        timestamp = ts
+                        value = val
+                    } else if valueArray.count >= 2 {
+                        // Simple format
+                        guard let ts = valueArray[0] as? Double,
+                              let val = valueArray[1] as? Double else {
+                            continue
+                        }
+                        timestamp = ts
+                        value = val
+                    } else {
+                        continue
+                    }
+
+                    // For network metrics, calculate rate (bytes/sec) from cumulative values
+                    if let prevTs = previousTimestamp, let prevVal = previousValue {
+                        let timeDiffSeconds = (timestamp - prevTs) / 1_000_000 // Convert microseconds to seconds
+                        let valueDiff = value - prevVal
+
+                        // Calculate bytes per second (rate)
+                        let rate = timeDiffSeconds > 0 ? valueDiff / timeDiffSeconds : 0
+
+                        // Convert microseconds to Date
+                        let date = Date(timeIntervalSince1970: timestamp / 1_000_000)
+
+                        let point = CCApplicationMetricPoint(
+                            timestamp: date,
+                            value: max(0, rate), // Ensure non-negative rate
+                            metricType: metricType.rawValue,
+                            unit: metricType.unit
+                        )
+
+                        points.append(point)
+                    }
+
+                    // Store current values for next iteration
+                    previousTimestamp = timestamp
+                    previousValue = value
+                }
+            }
+        }
+
+        // Sort by timestamp
+        points.sort { $0.timestamp < $1.timestamp }
+
+        print("✅ [CCApplicationMetricsService] Parsed \(points.count) network data points")
+        return points
+    }
+
     /// Convert ISO 8601 duration to Warp10 time format
     /// - Parameter iso8601Period: ISO 8601 period (e.g., "PT1H", "PT24H", "P7D", "P30D")
     /// - Returns: Warp10 time format (e.g., "1 h", "24 h", "7 d", "30 d")
@@ -437,8 +611,23 @@ public class CCApplicationMetricsService: ObservableObject {
         // Log all available metric names for debugging
         let availableMetrics = metricsArray.compactMap { $0["name"] as? String }
         RemoteLogger.shared.debug("[CleverMetrics] Available metrics", metadata: [
-            "metrics": availableMetrics.joined(separator: ", ")
+            "metrics": availableMetrics.joined(separator: ", "),
+            "searchingFor": metricType.rawValue
         ])
+
+        // Special logging for network metrics to understand what's available
+        if metricType == .networkIn || metricType == .networkOut {
+            let networkMetrics = availableMetrics.filter { name in
+                let lowercaseName = name.lowercased()
+                return lowercaseName.contains("net") || lowercaseName.contains("network") ||
+                       lowercaseName.contains("rx") || lowercaseName.contains("tx") ||
+                       lowercaseName.contains("in") || lowercaseName.contains("out")
+            }
+            RemoteLogger.shared.debug("[CleverMetrics] Network-related metrics found", metadata: [
+                "networkMetrics": networkMetrics.joined(separator: ", "),
+                "count": "\(networkMetrics.count)"
+            ])
+        }
         
         // The v4 API returns: [{"name":"cpu","data":[{"timestamp":...,"value":"..."}],"unit":"...","resource":"..."}]
         for metric in metricsArray {
@@ -454,13 +643,31 @@ public class CCApplicationMetricsService: ObservableObject {
                 let isMatchingMetric: Bool
                 switch metricType {
                 case .networkIn:
-                    // Try various possible network in metric names
-                    isMatchingMetric = name.lowercased().contains("net") && 
-                                      (name.lowercased().contains("in") || name.lowercased().contains("rx") || name.lowercased().contains("recv"))
+                    // Extended list of possible network in metric names based on Clever Cloud API
+                    let lowercaseName = name.lowercased()
+                    isMatchingMetric = lowercaseName == "net_in" ||
+                                      lowercaseName == "network_in" ||
+                                      lowercaseName == "net.in" ||
+                                      lowercaseName == "net.in.bytes" ||
+                                      lowercaseName == "network.in" ||
+                                      lowercaseName == "network.incoming" ||
+                                      lowercaseName == "net_rx" ||
+                                      lowercaseName == "rx_bytes" ||
+                                      lowercaseName == "network_received" ||
+                                      (lowercaseName.contains("net") && (lowercaseName.contains("in") || lowercaseName.contains("rx") || lowercaseName.contains("recv")))
                 case .networkOut:
-                    // Try various possible network out metric names
-                    isMatchingMetric = name.lowercased().contains("net") && 
-                                      (name.lowercased().contains("out") || name.lowercased().contains("tx") || name.lowercased().contains("send"))
+                    // Extended list of possible network out metric names based on Clever Cloud API
+                    let lowercaseName = name.lowercased()
+                    isMatchingMetric = lowercaseName == "net_out" ||
+                                      lowercaseName == "network_out" ||
+                                      lowercaseName == "net.out" ||
+                                      lowercaseName == "net.out.bytes" ||
+                                      lowercaseName == "network.out" ||
+                                      lowercaseName == "network.outgoing" ||
+                                      lowercaseName == "net_tx" ||
+                                      lowercaseName == "tx_bytes" ||
+                                      lowercaseName == "network_sent" ||
+                                      (lowercaseName.contains("net") && (lowercaseName.contains("out") || lowercaseName.contains("tx") || lowercaseName.contains("send")))
                 default:
                     isMatchingMetric = name == metricType.rawValue
                 }

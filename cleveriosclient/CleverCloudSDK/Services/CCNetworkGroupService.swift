@@ -3,11 +3,18 @@ import Combine
 
 // MARK: - CCNetworkGroupService
 /// Service for managing Clever Cloud Network Groups - the revolutionary networking feature
+/// TEMPORARILY DISABLED: All methods return "feature disabled" errors until Clever Cloud stabilizes this feature
 public class CCNetworkGroupService {
-    
+
     // MARK: - Properties
     private let httpClient: CCHTTPClient
-    
+
+    /// Flag to disable Network Groups functionality temporarily
+    private let isNetworkGroupsEnabled = false
+
+    /// Error returned when Network Groups are disabled
+    private let featureDisabledError = CCError.invalidParameters("Network Groups feature is temporarily disabled. Please wait for Clever Cloud to stabilize this feature.")
+
     // MARK: - Initialization
     public init(httpClient: CCHTTPClient) {
         self.httpClient = httpClient
@@ -19,6 +26,9 @@ public class CCNetworkGroupService {
     /// - Parameter organizationId: Organization ID
     /// - Returns: Publisher emitting array of network groups or error
     public func getNetworkGroups(organizationId: String) -> AnyPublisher<[CCNetworkGroup], CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups", apiVersion: .v4)
     }
     
@@ -28,6 +38,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting network group or error
     public func getNetworkGroup(organizationId: String, networkGroupId: String) -> AnyPublisher<CCNetworkGroup, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", apiVersion: .v4)
     }
     
@@ -37,6 +50,9 @@ public class CCNetworkGroupService {
     ///   - networkGroup: Network group creation data
     /// - Returns: Publisher emitting created network group or error
     public func createNetworkGroup(organizationId: String, networkGroup: CCNetworkGroupCreate) -> AnyPublisher<CCNetworkGroup, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         // First create the network group (expects empty response)
         let createRequest = httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups", body: networkGroup, apiVersion: .v4)
         
@@ -81,6 +97,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupUpdate: Network group update data
     /// - Returns: Publisher emitting updated network group or error
     public func updateNetworkGroup(organizationId: String, networkGroupId: String, networkGroupUpdate: CCNetworkGroupUpdate) -> AnyPublisher<CCNetworkGroup, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.put("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", body: networkGroupUpdate, apiVersion: .v4)
     }
     
@@ -90,6 +109,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID to delete
     /// - Returns: Publisher emitting void response or error
     public func deleteNetworkGroup(organizationId: String, networkGroupId: String) -> AnyPublisher<Void, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", apiVersion: .v4)
     }
     
@@ -101,6 +123,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting array of members or error
     public func getNetworkGroupMembers(organizationId: String, networkGroupId: String) -> AnyPublisher<[CCNetworkGroupMember], CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", apiVersion: .v4)
     }
     
@@ -121,6 +146,9 @@ public class CCNetworkGroupService {
     ///   - member: Member creation data
     /// - Returns: Publisher emitting added member or error
     public func addNetworkGroupMember(organizationId: String, networkGroupId: String, member: CCNetworkGroupMemberCreate) -> AnyPublisher<CCNetworkGroupMember, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", body: member, apiVersion: .v4)
     }
     
@@ -131,6 +159,9 @@ public class CCNetworkGroupService {
     ///   - memberId: Member ID to remove
     /// - Returns: Publisher emitting void response or error
     public func removeNetworkGroupMember(organizationId: String, networkGroupId: String, memberId: String) -> AnyPublisher<Void, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members/\(memberId)", apiVersion: .v4)
     }
     
@@ -142,6 +173,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting array of peers or error
     public func getNetworkGroupPeers(organizationId: String, networkGroupId: String) -> AnyPublisher<[CCNetworkGroupPeer], CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers", apiVersion: .v4)
     }
     
@@ -196,6 +230,9 @@ public class CCNetworkGroupService {
     ///   - peerId: Peer ID
     /// - Returns: Publisher emitting WireGuard configuration or error
     public func getWireGuardConfiguration(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<CCWireGuardConfiguration, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration", apiVersion: .v4)
     }
     
@@ -206,6 +243,9 @@ public class CCNetworkGroupService {
     ///   - peerId: Peer ID
     /// - Returns: Publisher emitting configuration file content or error
     public func getWireGuardConfigurationStream(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<String, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration/stream", apiVersion: .v4)
     }
     
@@ -229,6 +269,9 @@ public class CCNetworkGroupService {
     ///   - applicationId: Application ID to add
     /// - Returns: Publisher emitting added member or error
     public func addApplicationToNetworkGroup(organizationId: String, networkGroupId: String, applicationId: String) -> AnyPublisher<CCNetworkGroupMember, CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         let member = CCNetworkGroupMemberCreate(type: .application, resourceId: applicationId)
         return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: member)
     }
@@ -250,6 +293,9 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting tuple with all network group data or error
     public func getCompleteNetworkGroupData(organizationId: String, networkGroupId: String) -> AnyPublisher<(CCNetworkGroup, [CCNetworkGroupMember], [CCNetworkGroupPeer]), CCError> {
+        guard isNetworkGroupsEnabled else {
+            return Fail(error: featureDisabledError).eraseToAnyPublisher()
+        }
         let networkGroupPublisher = getNetworkGroup(organizationId: organizationId, networkGroupId: networkGroupId)
         let membersPublisher = getNetworkGroupMembers(organizationId: organizationId, networkGroupId: networkGroupId)
         let peersPublisher = getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId)

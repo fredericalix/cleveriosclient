@@ -61,9 +61,12 @@ struct ContentView: View {
     @State private var pollingInterval: TimeInterval = 15.0
     @State private var eventSystemMode: String = "Disconnected"
     
+    // MARK: - Feature Flags
+    private let isNetworkGroupsEnabled = false // TODO: Set to true when Clever Cloud stabilizes Network Groups
+
     // MARK: - Network Groups State
     @State private var showingNetworkGroups = false
-    
+
     // MARK: - Creation Views State
     @State private var showingCreateAddon = false
     
@@ -83,7 +86,7 @@ struct ContentView: View {
         case dashboard
         case applicationDetail
         case addonDetail
-        case networkGroups
+        // case networkGroups // Disabled - will be enabled when Clever Cloud stabilizes Network Groups
     }
     
     // Computed property to determine if we're on iPad - Using Apple recommended method
@@ -242,8 +245,8 @@ struct ContentView: View {
                         // Keep application detail view if we have a selected app
                     } else if selectedDetailView == .addonDetail && selectedAddonForDetail != nil {
                         // Keep addon detail view if we have a selected addon
-                    } else if selectedDetailView == .networkGroups {
-                        // Keep network groups view (it will reload for the new organization)
+                    // } else if selectedDetailView == .networkGroups {
+                    //     // Keep network groups view (it will reload for the new organization) - DISABLED
                     } else {
                         // Default to dashboard only if no valid selection
                         selectedDetailView = .dashboard
@@ -266,7 +269,11 @@ struct ContentView: View {
                         organizationsCard
                         applicationsCard
                         addonsCard
-                        networkGroupsCard
+
+                        // Network Groups Card - Disabled until Clever Cloud stabilizes the feature
+                        if isNetworkGroupsEnabled {
+                            networkGroupsCard
+                        }
                     }
                     .padding(.horizontal)
                     
@@ -348,8 +355,8 @@ struct ContentView: View {
                 }
             }
             
-            // Network Groups Section - Intégré directement
-            if selectedOrganization?.id != nil {
+            // Network Groups Section - Disabled until Clever Cloud stabilizes the feature
+            if isNetworkGroupsEnabled && selectedOrganization?.id != nil {
                 Section(header: Text("Network Groups")) {
                     Button(action: {
                         selectNetworkGroups()
@@ -358,23 +365,23 @@ struct ContentView: View {
                             Image(systemName: "network")
                                 .foregroundColor(.blue)
                                 .font(.title3)
-                            
+
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Network Groups")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                
+
                                 Text("Manage network connections")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            
+
                             Spacer()
-                            
-                            if selectedDetailView == .networkGroups {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.blue)
-                            }
+
+                            // if selectedDetailView == .networkGroups {
+                            //     Image(systemName: "checkmark.circle.fill")
+                            //         .foregroundColor(.blue)
+                            // }
                         }
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -414,14 +421,14 @@ struct ContentView: View {
                     iPadDashboardView
                         .navigationTitle("Dashboard")
                 }
-            case .networkGroups:
-                if let organizationId = selectedOrganization?.id {
-                    NetworkGroupsModernView(organizationId: organizationId, isEmbeddedInNavigationSplitView: true)
-                        .navigationTitle("Network Groups")
-                } else {
-                    iPadDashboardView
-                        .navigationTitle("Dashboard")
-                }
+            // case .networkGroups: // Disabled - Network Groups feature temporarily disabled
+            //     if let organizationId = selectedOrganization?.id {
+            //         NetworkGroupsModernView(organizationId: organizationId, isEmbeddedInNavigationSplitView: true)
+            //             .navigationTitle("Network Groups")
+            //     } else {
+            //         iPadDashboardView
+            //             .navigationTitle("Dashboard")
+            //     }
             }
         }
     }
@@ -748,23 +755,17 @@ struct ContentView: View {
         }
     }
     
+    // Network Groups functionality disabled until Clever Cloud stabilizes the feature
     private func selectNetworkGroups() {
-        print("🎯 [iPad Navigation] Selecting Network Groups")
-        RemoteLogger.shared.info("🎯 [iPad Navigation] Selecting Network Groups")
-        
-        // Update state atomically to avoid conflicts
+        // Disabled - Network Groups feature temporarily unavailable
+        print("🚫 [iPad Navigation] Network Groups functionality disabled")
+        RemoteLogger.shared.info("🚫 [iPad Navigation] Network Groups functionality disabled until further notice")
+
+        // Redirect to dashboard instead
         withAnimation(.easeInOut(duration: 0.2)) {
-            selectedDetailView = .networkGroups
+            selectedDetailView = .dashboard
             selectedApplicationForDetail = nil
             selectedAddonForDetail = nil
-        }
-        
-        // On iPad, force a UI refresh to ensure the detail view updates
-        if isIpad {
-            DispatchQueue.main.async {
-                // This ensures the UI refresh happens after the state change
-                print("🔄 [iPad Navigation] State updated - DetailView: \(selectedDetailView)")
-            }
         }
     }
     
@@ -2108,10 +2109,10 @@ struct ContentView: View {
                     print("🔄 [iPad Navigation] Previous addon not found, staying on dashboard")
                 }
             }
-        case .networkGroups:
-            // Maintain network groups selection (it will reload with new organization data)
-            print("🔄 [iPad Navigation] Maintaining Network Groups selection")
-            selectNetworkGroups()
+        // case .networkGroups: // Disabled - Network Groups feature temporarily disabled
+        //     // Maintain network groups selection (it will reload with new organization data)
+        //     print("🔄 [iPad Navigation] Maintaining Network Groups selection")
+        //     selectNetworkGroups()
         case .dashboard:
             // Already on dashboard, nothing to do
             break
