@@ -326,7 +326,7 @@ struct LogEntryRow: View {
             HStack(alignment: .top) {
                 // Level icon and color
                 Image(systemName: log.level.icon)
-                    .foregroundColor(Color(log.level.color))
+                    .foregroundColor(colorForLogLevel(log.level))
                     .font(.caption)
                 
                 // Timestamp
@@ -393,7 +393,20 @@ struct LogEntryRow: View {
         formatter.dateFormat = "HH:mm:ss.SSS"
         return formatter.string(from: date)
     }
-    
+
+    private func colorForLogLevel(_ level: CCLogLevel) -> Color {
+        switch level {
+        case .debug:
+            return .gray
+        case .info:
+            return .blue
+        case .warning:
+            return .orange
+        case .error:
+            return .red
+        }
+    }
+
     private func copyLog() {
         let fullLog = "[\(formatTimestamp(log.timestamp))] [\(log.level.rawValue.uppercased())] \(log.message)"
         UIPasteboard.general.string = fullLog
