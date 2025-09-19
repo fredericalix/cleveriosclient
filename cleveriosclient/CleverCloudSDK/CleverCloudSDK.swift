@@ -29,7 +29,10 @@ public final class CleverCloudSDK: ObservableObject {
     
     /// Events service for real-time updates and notifications
     public let events: CCEventsService
-    
+
+    /// Warp10 client for metrics data
+    public let warp10Client: CCWarp10Client
+
     /// SDK configuration
     public let configuration: CCConfiguration
     
@@ -71,6 +74,7 @@ public final class CleverCloudSDK: ObservableObject {
         self.deployments = CCDeploymentService(httpClient: httpClient)
         self.environment = CCEnvironmentService(httpClient: httpClient)
         self.networkGroups = CCNetworkGroupService(httpClient: httpClient)
+        self.warp10Client = CCWarp10Client(httpClient: httpClient)
         self.events = CCEventsService(baseURL: CCConfiguration.apiV2BaseURL, oauthSigner: CCOAuthSigner(configuration: configuration))
         
         // Set initial authentication state
