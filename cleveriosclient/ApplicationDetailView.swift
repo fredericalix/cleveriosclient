@@ -144,7 +144,7 @@ struct ApplicationDetailView: View {
                 overviewTab
                     .tabItem {
                         Image(systemName: "chart.bar")
-                        Text("Overview")
+                        Text("Metrics")
                     }
                     .tag(2)
                 
