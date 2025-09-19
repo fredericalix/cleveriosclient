@@ -68,9 +68,29 @@ public class CCDeploymentService: ObservableObject {
                 queryItems.append("offset=\(String(offset))")
             }
         }
-        
+
         let finalEndpoint = queryItems.isEmpty ? endpoint : "\(endpoint)?\(queryItems.joined(separator: "&"))"
-        return httpClient.get(finalEndpoint, apiVersion: .v2)
+
+        // Debug: Log raw response to understand the actual API response structure
+        return httpClient.getRawData(finalEndpoint, apiVersion: .v2)
+            .tryMap { data in
+                // Log raw response for debugging
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔍 [CCDeploymentService] Raw deployments response: \(jsonString.prefix(500))...")
+                }
+
+                // Try to decode the response
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try decoder.decode([CCDeployment].self, from: data)
+            }
+            .mapError { error in
+                if let ccError = error as? CCError {
+                    return ccError
+                }
+                return CCError.parsingError(error)
+            }
+            .eraseToAnyPublisher()
     }
     
     /// Get a specific deployment

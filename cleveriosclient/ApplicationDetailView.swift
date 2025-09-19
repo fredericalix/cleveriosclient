@@ -52,6 +52,11 @@ struct ApplicationDetailView: View {
     @State private var isPaused = false
     @State private var autoScroll = true
     @State private var logsTimer: Timer?
+
+    // Deployment-related state
+    @State private var deployments: [CCDeployment] = []
+    @State private var isLoadingDeployments = false
+    @State private var deploymentsError: String?
     
     // Configuration state
     @State private var availableFlavors: [CCFlavor] = []
@@ -946,6 +951,55 @@ struct ApplicationDetailView: View {
     
 
     
+    private var deploymentHistoryView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isLoadingDeployments {
+                ProgressView("Loading deployments...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = deploymentsError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    Text("Failed to load deployments")
+                        .font(.headline)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Button("Retry") {
+                        loadDeployments()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if deployments.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "tray")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("No deployments yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(deployments) { deployment in
+                            DeploymentRow(deployment: deployment)
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+        .onAppear {
+            if deployments.isEmpty && !isLoadingDeployments {
+                loadDeployments()
+            }
+        }
+    }
+
     private var deploymentsTab: some View {
         VStack(spacing: 0) {
             // Segmented Control
@@ -955,19 +1009,11 @@ struct ApplicationDetailView: View {
             }
             .pickerStyle(SegmentedPickerStyle())
             .padding()
-            
+
             // Content based on selection
             if selectedDeploymentSection == 0 {
-                // Deployments view (placeholder for now)
-                VStack {
-                    Text("Deployments History")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    Text("Coming soon: Deployment history, build logs, rollback")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Deployments view
+                deploymentHistoryView
             } else {
                 // Logs view
                 ApplicationLogsView(
@@ -1670,6 +1716,33 @@ struct ApplicationDetailView: View {
         .store(in: &cancellables)
     }
     
+    /// Load deployment history for the application
+    private func loadDeployments() {
+        isLoadingDeployments = true
+        deploymentsError = nil
+
+        cleverCloudSDK.deployments.getDeployments(
+            applicationId: application.id,
+            organizationId: organizationId
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                self.isLoadingDeployments = false
+                if case .failure(let error) = completion {
+                    self.deploymentsError = error.localizedDescription
+                    print("❌ Failed to load deployments: \(error)")
+                }
+            },
+            receiveValue: { deployments in
+                self.deployments = deployments
+                self.isLoadingDeployments = false
+                print("✅ Loaded \(deployments.count) deployments")
+            }
+        )
+        .store(in: &cancellables)
+    }
+
     /// Reload application data from API after successful configuration change
     /// This ensures the UI displays the updated flavor information
     private func reloadApplicationFromAPI() {
@@ -2243,5 +2316,100 @@ struct FeatureBadge: View {
             ),
             organizationId: nil
         )
+    }
+}
+
+// MARK: - Deployment Row View
+
+struct DeploymentRow: View {
+    let deployment: CCDeployment
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Status icon
+            VStack {
+                statusIcon
+                    .font(.title2)
+            }
+            .frame(width: 40)
+
+            // Deployment details
+            VStack(alignment: .leading, spacing: 4) {
+                // First row: action and state
+                HStack {
+                    Text(deployment.displayAction)
+                        .font(.headline)
+                    Spacer()
+                    Text(deployment.displayState)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
+
+                // Second row: commit and branch
+                if let commit = deployment.shortCommit, let branch = deployment.branch {
+                    HStack {
+                        Label(commit, systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Label(branch, systemImage: "arrow.branch")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if let branch = deployment.branch {
+                    Label(branch, systemImage: "arrow.branch")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Third row: timestamp and duration
+                HStack {
+                    Label(deployment.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                    if let duration = deployment.humanDuration {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text("Duration: \(duration)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Triggered by info
+                if let triggeredBy = deployment.triggeredBy {
+                    Label("Triggered by \(triggeredBy)", systemImage: "person.circle")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(10)
+    }
+
+    private var statusIcon: some View {
+        Group {
+            switch deployment.state.uppercased() {
+            case "WIP", "QUEUED":
+                ProgressView()
+                    .scaleEffect(0.8)
+            case "SUCCESS":
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            case "FAIL", "FAILED":
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.red)
+            case "CANCELLED":
+                Image(systemName: "stop.circle.fill")
+                    .foregroundColor(.gray)
+            default:
+                Image(systemName: "circle.fill")
+                    .foregroundColor(.blue)
+            }
+        }
     }
 }

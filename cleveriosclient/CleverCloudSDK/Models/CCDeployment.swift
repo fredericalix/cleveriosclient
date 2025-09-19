@@ -8,7 +8,7 @@ public struct CCDeployment: Codable, Identifiable, Equatable {
     
     // MARK: - Core Properties
     
-    /// Unique deployment identifier
+    /// Unique deployment identifier (can be numeric, converted to String)
     public let id: String
     
     /// Deployment UUID (Clever Cloud internal ID)
@@ -154,13 +154,70 @@ public struct CCDeployment: Codable, Identifiable, Equatable {
         case duration
         case result
         case error
-        case triggeredBy = "triggered_by"
+        case triggeredBy = "cause"
         case environment
         case instanceConfiguration = "instance_configuration"
     }
     
+    // MARK: - Custom Decoding to handle numeric IDs
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Handle id field which can be numeric or string
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            self.id = String(intId)
+        } else {
+            self.id = try container.decode(String.self, forKey: .id)
+        }
+
+        // Handle uuid field which can be numeric or string
+        if let intUuid = try? container.decode(Int.self, forKey: .uuid) {
+            self.uuid = String(intUuid)
+        } else {
+            self.uuid = try container.decode(String.self, forKey: .uuid)
+        }
+
+        // Decode other fields normally
+        // Note: applicationId is not returned by the API in deployment list
+        self.applicationId = try container.decodeIfPresent(String.self, forKey: .applicationId) ?? ""
+        self.action = try container.decode(String.self, forKey: .action)
+        self.state = try container.decode(String.self, forKey: .state)
+        self.type = try container.decodeIfPresent(String.self, forKey: .type)
+        self.commit = try container.decodeIfPresent(String.self, forKey: .commit)
+        self.repository = try container.decodeIfPresent(String.self, forKey: .repository)
+        self.branch = try container.decodeIfPresent(String.self, forKey: .branch)
+
+        // Handle date as Unix timestamp in milliseconds
+        if let timestamp = try? container.decode(Double.self, forKey: .createdAt) {
+            self.createdAt = Date(timeIntervalSince1970: timestamp / 1000.0)
+        } else {
+            // Fallback to ISO8601 date
+            self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        }
+
+        // Handle optional dates
+        if let timestamp = try? container.decodeIfPresent(Double.self, forKey: .startedAt) {
+            self.startedAt = Date(timeIntervalSince1970: timestamp / 1000.0)
+        } else {
+            self.startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        }
+
+        if let timestamp = try? container.decodeIfPresent(Double.self, forKey: .endedAt) {
+            self.endedAt = Date(timeIntervalSince1970: timestamp / 1000.0)
+        } else {
+            self.endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        }
+        self.duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        self.result = try container.decodeIfPresent(String.self, forKey: .result)
+        self.error = try container.decodeIfPresent(String.self, forKey: .error)
+        self.triggeredBy = try container.decodeIfPresent(String.self, forKey: .triggeredBy)
+        self.environment = try container.decodeIfPresent([String: String].self, forKey: .environment)
+        self.instanceConfiguration = try container.decodeIfPresent(CCInstanceConfiguration.self, forKey: .instanceConfiguration)
+    }
+
     // MARK: - Initialization
-    
+
     public init(
         id: String,
         uuid: String,
