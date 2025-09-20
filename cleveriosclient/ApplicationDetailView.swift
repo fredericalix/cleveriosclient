@@ -10,6 +10,7 @@ struct ApplicationDetailView: View {
     // MARK: - iPad Detection
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
+    @Environment(\.presentationMode) var presentationMode
     
     // Computed property to determine if we're on iPad
     private var isIpad: Bool {
@@ -35,7 +36,9 @@ struct ApplicationDetailView: View {
     @State private var isStarting = false
     @State private var isStopping = false
     @State private var isRestarting = false
+    @State private var isRedeploying = false
     @State private var actionMessage: String?
+    @State private var showingDeleteConfirmation = false
     
     // Real status tracking
     @State private var applicationStatus = "Loading..."
@@ -83,7 +86,7 @@ struct ApplicationDetailView: View {
     @State private var isAddingDomain = false
     @State private var isDeletingDomain = false
     @State private var domainToDelete: String?
-    @State private var showingDeleteConfirmation = false
+    @State private var showingDeleteDomainConfirmation = false
 
     // MARK: - Metrics State
     @State private var selectedMetricsPeriod = "PT1H"
@@ -260,44 +263,61 @@ struct ApplicationDetailView: View {
                 )
             }
             
-            // Quick Actions
-            HStack(spacing: 12) {
-                ActionButton(
-                    title: isStarting ? "Starting..." : "Start", 
-                    icon: isStarting ? "hourglass" : "play.fill", 
-                    color: .green,
-                    isLoading: isStarting
-                ) {
-                    startApplication()
+            // Quick Actions - Organized in two rows
+            VStack(spacing: 8) {
+                // Row 1: State Controls
+                HStack(spacing: 12) {
+                    ActionButton(
+                        title: isStarting ? "Starting..." : "Start",
+                        icon: isStarting ? "hourglass" : "play.fill",
+                        color: .green,
+                        isLoading: isStarting
+                    ) {
+                        startApplication()
+                    }
+
+                    ActionButton(
+                        title: isStopping ? "Stopping..." : "Stop",
+                        icon: isStopping ? "hourglass" : "stop.fill",
+                        color: .red,
+                        isLoading: isStopping
+                    ) {
+                        stopApplication()
+                    }
+
+                    ActionButton(
+                        title: isRestarting ? "Restarting..." : "Restart",
+                        icon: isRestarting ? "hourglass" : "arrow.clockwise",
+                        color: .orange,
+                        isLoading: isRestarting
+                    ) {
+                        restartApplication()
+                    }
+
+                    Spacer()
                 }
-                
-                ActionButton(
-                    title: isStopping ? "Stopping..." : "Stop", 
-                    icon: isStopping ? "hourglass" : "stop.fill", 
-                    color: .red,
-                    isLoading: isStopping
-                ) {
-                    stopApplication()
-                }
-                
-                ActionButton(
-                    title: isRestarting ? "Restarting..." : "Restart", 
-                    icon: isRestarting ? "hourglass" : "arrow.clockwise", 
-                    color: .orange,
-                    isLoading: isRestarting
-                ) {
-                    restartApplication()
-                }
-                
-                Spacer()
-                
-                ActionButton(
-                    title: isLoading ? "Refreshing..." : "Refresh", 
-                    icon: isLoading ? "hourglass" : "arrow.clockwise", 
-                    color: .blue,
-                    isLoading: isLoading
-                ) {
-                    refreshApplicationData()
+
+                // Row 2: Deployment & Refresh
+                HStack(spacing: 12) {
+                    ActionButton(
+                        title: isRedeploying ? "Redeploying..." : "Redeploy",
+                        icon: isRedeploying ? "hourglass" : "arrow.up.doc",
+                        color: .purple,
+                        isLoading: isRedeploying
+                    ) {
+                        redeployApplication()
+                    }
+
+                    ActionButton(
+                        title: isLoading ? "Refreshing..." : "Refresh",
+                        icon: isLoading ? "hourglass" : "arrow.clockwise",
+                        color: .blue,
+                        isLoading: isLoading
+                    ) {
+                        refreshApplicationData()
+                    }
+
+                    Spacer()
                 }
             }
             
@@ -1159,7 +1179,7 @@ struct ApplicationDetailView: View {
 
                                         Button(action: {
                                             domainToDelete = domain.fqdn
-                                            showingDeleteConfirmation = true
+                                            showingDeleteDomainConfirmation = true
                                         }) {
                                             Image(systemName: "trash")
                                                 .foregroundColor(.red)
@@ -1264,7 +1284,7 @@ struct ApplicationDetailView: View {
         .sheet(isPresented: $showingAddDomain) {
             addDomainSheet
         }
-        .alert("Remove Domain", isPresented: $showingDeleteConfirmation) {
+        .alert("Remove Domain", isPresented: $showingDeleteDomainConfirmation) {
             Button("Cancel", role: .cancel) {
                 domainToDelete = nil
             }
@@ -1285,13 +1305,65 @@ struct ApplicationDetailView: View {
     }
     
     private var advancedTab: some View {
-        VStack {
-            Text("Advanced Settings")
-                .font(.title2)
-                .fontWeight(.bold)
-            Text("Delete app, security, integrations, backup")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        ScrollView {
+            VStack(spacing: 20) {
+                Text("Advanced Settings")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("Dangerous operations")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                // Danger Zone
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        Text("Danger Zone")
+                            .font(.headline)
+                            .foregroundColor(.red)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Delete Application")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        Text("Once you delete an application, there is no going back. Please be certain.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Button(action: {
+                            showingDeleteConfirmation = true
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Delete Application")
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color.red)
+                            .cornerRadius(8)
+                        }
+                        .alert("Delete Application", isPresented: $showingDeleteConfirmation) {
+                            Button("Cancel", role: .cancel) { }
+                            Button("Delete", role: .destructive) {
+                                deleteApplication()
+                            }
+                        } message: {
+                            Text("Are you sure you want to delete \"\(application.name)\"? This action cannot be undone.")
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                }
+                .padding()
+
+                Spacer()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1382,7 +1454,8 @@ struct ApplicationDetailView: View {
         let newVariable = CCEnvironmentVariable(name: newVariableName, value: newVariableValue)
         cleverCloudSDK.applications.setEnvironmentVariable(
             applicationId: application.id,
-            variable: newVariable
+            variable: newVariable,
+            organizationId: organizationId
         )
         .receive(on: DispatchQueue.main)
         .sink(
@@ -1409,7 +1482,8 @@ struct ApplicationDetailView: View {
         // Use the applications service to delete the environment variable
         cleverCloudSDK.applications.removeEnvironmentVariable(
             applicationId: application.id,
-            name: variable.name
+            name: variable.name,
+            organizationId: organizationId
         )
         .receive(on: DispatchQueue.main)
         .sink(
@@ -1550,7 +1624,76 @@ struct ApplicationDetailView: View {
             )
             .store(in: &cancellables)
     }
-    
+
+    private func redeployApplication() {
+        isRedeploying = true
+        actionMessage = "Redeploying application..."
+
+        cleverCloudSDK.applications.deploy(applicationId: application.id)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    isRedeploying = false
+
+                    switch completion {
+                    case .finished:
+                        actionMessage = "✅ Redeploy request sent successfully"
+
+                        // Refresh application state after 2 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            refreshApplicationState()
+                        }
+
+                        // Clear message after 3 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            actionMessage = nil
+                        }
+
+                    case .failure(let error):
+                        actionMessage = "❌ Failed to redeploy: \(error.localizedDescription)"
+
+                        // Clear error message after 5 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                            actionMessage = nil
+                        }
+                    }
+                },
+                receiveValue: { _ in
+                    // Request completed successfully
+                }
+            )
+            .store(in: &cancellables)
+    }
+
+    private func deleteApplication() {
+        cleverCloudSDK.applications.deleteApplication(applicationId: application.id, organizationId: organizationId)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    switch completion {
+                    case .finished:
+                        // Navigate back to the main screen
+                        presentationMode.wrappedValue.dismiss()
+
+                        // Post notification to refresh the application list
+                        NotificationCenter.default.post(name: NSNotification.Name("RefreshApplicationList"), object: nil)
+
+                    case .failure(let error):
+                        actionMessage = "❌ Failed to delete application: \(error.localizedDescription)"
+
+                        // Clear error message after 5 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                            actionMessage = nil
+                        }
+                    }
+                },
+                receiveValue: { _ in
+                    // Request completed successfully
+                }
+            )
+            .store(in: &cancellables)
+    }
+
     private func refreshApplicationData() {
         loadEnvironmentVariables()
         refreshApplicationState()

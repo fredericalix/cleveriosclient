@@ -171,33 +171,57 @@ public class CCApplicationService: ObservableObject {
     /// - Parameters:
     ///   - applicationId: The application ID
     ///   - variables: Array of environment variables to set
+    ///   - organizationId: Optional organization ID (nil for user applications)
     public func setEnvironmentVariables(
         applicationId: String,
-        variables: [CCEnvironmentVariable]
-    ) -> AnyPublisher<[CCEnvironmentVariable], CCError> {
-        return httpClient.put("/self/applications/\(applicationId)/env", body: variables, apiVersion: .v2)
+        variables: [CCEnvironmentVariable],
+        organizationId: String? = nil
+    ) -> AnyPublisher<EmptyResponse, CCError> {
+        let endpoint: String
+        if let orgId = organizationId {
+            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env"
+        } else {
+            endpoint = "/self/applications/\(applicationId)/env"
+        }
+        return httpClient.put(endpoint, body: variables, apiVersion: .v2)
     }
     
     /// Add or update a single environment variable
     /// - Parameters:
     ///   - applicationId: The application ID
     ///   - variable: Environment variable to set
+    ///   - organizationId: Optional organization ID (nil for user applications)
     public func setEnvironmentVariable(
         applicationId: String,
-        variable: CCEnvironmentVariable
-    ) -> AnyPublisher<CCEnvironmentVariable, CCError> {
-        return httpClient.put("/self/applications/\(applicationId)/env/\(variable.name)", body: variable, apiVersion: .v2)
+        variable: CCEnvironmentVariable,
+        organizationId: String? = nil
+    ) -> AnyPublisher<EmptyResponse, CCError> {
+        let endpoint: String
+        if let orgId = organizationId {
+            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env/\(variable.name)"
+        } else {
+            endpoint = "/self/applications/\(applicationId)/env/\(variable.name)"
+        }
+        return httpClient.put(endpoint, body: variable, apiVersion: .v2)
     }
     
     /// Remove an environment variable
     /// - Parameters:
     ///   - applicationId: The application ID
     ///   - name: Variable name to remove
+    ///   - organizationId: Optional organization ID (nil for user applications)
     public func removeEnvironmentVariable(
         applicationId: String,
-        name: String
+        name: String,
+        organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
-        return httpClient.delete("/self/applications/\(applicationId)/env/\(name)", apiVersion: .v2)
+        let endpoint: String
+        if let orgId = organizationId {
+            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env/\(name)"
+        } else {
+            endpoint = "/self/applications/\(applicationId)/env/\(name)"
+        }
+        return httpClient.delete(endpoint, apiVersion: .v2)
     }
     
     // MARK: - Scaling
