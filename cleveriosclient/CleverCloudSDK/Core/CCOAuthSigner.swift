@@ -34,9 +34,15 @@ public final class CCOAuthSigner: @unchecked Sendable {
             }
             throw CCError.authenticationFailed
         }
-        
+
         guard let url = request.url else {
             throw CCError.invalidURL
+        }
+
+        // CRITICAL DEBUG: Log the actual URL being used for OAuth signature
+        if configuration.enableDebugLogging {
+            RemoteLogger.shared.debug("🔐 [OAuth] URL for signature: \(url.absoluteString)")
+            RemoteLogger.shared.debug("🔐 [OAuth] URL path: \(url.path)")
         }
         
         // Extract query parameters from URL
@@ -139,7 +145,20 @@ public final class CCOAuthSigner: @unchecked Sendable {
             .joined(separator: "&")
         
         // Get base URL (without query parameters)
-        let baseURL = "\(requestURL.scheme!)://\(requestURL.host!)\(requestURL.path)"
+        // CRITICAL: Use the encoded path as it will be sent in the actual HTTP request
+        // requestURL.path automatically decodes the path, but we need the encoded version
+        // Extract the path from the absoluteString to preserve encoding
+        let absoluteString = requestURL.absoluteString
+        let baseURL: String
+        if let hostEndIndex = absoluteString.range(of: requestURL.host!)?.upperBound {
+            let pathWithQuery = String(absoluteString[hostEndIndex...])
+            let path = pathWithQuery.components(separatedBy: "?").first ?? pathWithQuery
+            baseURL = "\(requestURL.scheme!)://\(requestURL.host!)\(path)"
+        } else {
+            // Fallback to original behavior if parsing fails
+            let path = requestURL.path
+            baseURL = "\(requestURL.scheme!)://\(requestURL.host!)\(path)"
+        }
         
         // Create signature base string
         let baseString = [

@@ -73,7 +73,18 @@ struct ApplicationDetailView: View {
     @State private var showingDestroyConfirmation = false
     @State private var isDestroying = false
     @State private var destroyConfirmationText = ""
-    
+
+    // MARK: - Domains State
+    @State private var domains: [CCDomain] = []
+    @State private var isLoadingDomains = false
+    @State private var domainsError: String?
+    @State private var showingAddDomain = false
+    @State private var newDomainName = ""
+    @State private var isAddingDomain = false
+    @State private var isDeletingDomain = false
+    @State private var domainToDelete: String?
+    @State private var showingDeleteConfirmation = false
+
     // MARK: - Metrics State
     @State private var selectedMetricsPeriod = "PT1H"
     @State private var isLoadingMetrics = false
@@ -1034,15 +1045,243 @@ struct ApplicationDetailView: View {
     }
     
     private var domainsTab: some View {
-        VStack {
-            Text("Domains & Networking")
-                .font(.title2)
-                .fontWeight(.bold)
-            Text("Domain management, SSL, DNS configuration")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            // Header with Add Button
+            HStack {
+                Text("Domains")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Spacer()
+
+                Button(action: {
+                    showingAddDomain = true
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add Domain")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+
+            if isLoadingDomains {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Loading domains...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Default Clever Cloud domain section
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(.orange)
+                                Text("Default Domain")
+                                    .font(.headline)
+                            }
+
+                            HStack {
+                                Image(systemName: "globe")
+                                    .foregroundColor(.blue)
+                                    .font(.title3)
+
+                                Text(cleverAppDomain)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.primary)
+
+                                Spacer()
+
+                                Button(action: {
+                                    UIPasteboard.general.string = cleverAppDomain
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+
+                            Text("This is your default Clever Cloud domain. It cannot be removed.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        // Custom domains section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Custom Domains")
+                                .font(.headline)
+
+                            if domains.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "link.badge.plus")
+                                        .font(.largeTitle)
+                                        .foregroundColor(.secondary)
+
+                                    Text("No custom domains yet")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+
+                                    Text("Add a custom domain to make your app accessible via your own domain name.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 30)
+                            } else {
+                                ForEach(domains) { domain in
+                                    HStack {
+                                        Image(systemName: "globe")
+                                            .foregroundColor(.green)
+                                            .font(.title3)
+
+                                        Text(domain.fqdn)
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundColor(.primary)
+
+                                        Spacer()
+
+                                        Button(action: {
+                                            UIPasteboard.general.string = domain.fqdn
+                                        }) {
+                                            Image(systemName: "doc.on.doc")
+                                                .foregroundColor(.blue)
+                                        }
+
+                                        Button(action: {
+                                            domainToDelete = domain.fqdn
+                                            showingDeleteConfirmation = true
+                                        }) {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.red)
+                                        }
+                                        .disabled(isDeletingDomain)
+                                    }
+                                    .padding()
+                                    .background(Color(.systemBackground))
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(.systemGray4), lineWidth: 1)
+                                    )
+                                }
+                            }
+                        }
+
+                        // DNS Configuration Help
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "network")
+                                    .foregroundColor(.blue)
+                                Text("Configure your DNS")
+                                    .font(.headline)
+                            }
+
+                            Text("To associate a domain managed by a third-party provider, configure its DNS zone:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            // CNAME Record (Recommended)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("CNAME Record (Recommended)", systemImage: "star.fill")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+
+                                HStack {
+                                    Text("domain.par.clever-cloud.com.")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(.blue)
+
+                                    Button(action: {
+                                        UIPasteboard.general.string = "domain.par.clever-cloud.com."
+                                    }) {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.caption)
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(8)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+
+                            Divider()
+
+                            // A Records (Alternative)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("A Records (For APEX domains)", systemImage: "number")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+
+                                Text("91.208.207.214-218, 220-223")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Divider()
+
+                            // SSL/TLS info
+                            HStack(spacing: 6) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Automatic HTTPS")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                    Text("Let's Encrypt certificates are automatically issued and renewed")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    }
+                    .padding()
+                }
+            }
+
+            // Error message display
+            if let error = domainsError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding()
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showingAddDomain) {
+            addDomainSheet
+        }
+        .alert("Remove Domain", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                domainToDelete = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let domain = domainToDelete {
+                    removeDomain(domain)
+                    domainToDelete = nil
+                }
+            }
+        } message: {
+            Text("Are you sure you want to remove '\(domainToDelete ?? "")'? This action cannot be undone.")
+        }
+        .onAppear {
+            if domains.isEmpty && !isLoadingDomains {
+                loadDomains()
+            }
+        }
     }
     
     private var advancedTab: some View {
@@ -1743,6 +1982,160 @@ struct ApplicationDetailView: View {
         .store(in: &cancellables)
     }
 
+    // MARK: - Domains Management
+
+    /// Load domains for the application
+    private func loadDomains() {
+        guard let orgId = organizationId else {
+            domainsError = "Organization ID not available"
+            print("❌ Cannot load domains: organizationId is nil")
+            return
+        }
+
+        isLoadingDomains = true
+        domainsError = nil
+
+        cleverCloudSDK.applications.getDomainsForOrganization(
+            applicationId: application.id,
+            organizationId: orgId
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                isLoadingDomains = false
+                if case .failure(let error) = completion {
+                    domainsError = error.localizedDescription
+                    print("❌ Failed to load domains: \(error)")
+                }
+            },
+            receiveValue: { loadedDomains in
+                domains = loadedDomains
+                print("✅ Loaded \(domains.count) domains")
+                if !loadedDomains.isEmpty {
+                    print("🏷️ Domain list: \(loadedDomains.map { $0.fqdn }.joined(separator: ", "))")
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+
+    /// Add a new custom domain
+    private func addDomain() {
+        guard !newDomainName.isEmpty else { return }
+
+        guard let orgId = organizationId else {
+            domainsError = "Organization ID not available"
+            print("❌ Cannot add domain: organizationId is nil")
+            return
+        }
+
+        // Validate domain format
+        guard isValidDomain(newDomainName) else {
+            domainsError = "Invalid domain format. Please enter a valid domain name."
+            return
+        }
+
+        isAddingDomain = true
+        domainsError = nil
+
+        cleverCloudSDK.applications.addDomain(
+            applicationId: application.id,
+            organizationId: orgId,
+            domain: newDomainName
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                isAddingDomain = false
+                if case .failure(let error) = completion {
+                    domainsError = "Failed to add domain: \(error.localizedDescription)"
+                    print("❌ Failed to add domain: \(error)")
+                }
+            },
+            receiveValue: { _ in
+                print("✅ Domain added successfully")
+                newDomainName = ""
+                showingAddDomain = false
+                // Reload domains to show the new one
+                loadDomains()
+            }
+        )
+        .store(in: &cancellables)
+    }
+
+    /// Remove a custom domain
+    private func removeDomain(_ domain: String) {
+        guard let orgId = organizationId else {
+            domainsError = "Organization ID not available"
+            print("❌ Cannot remove domain: organizationId is nil")
+            return
+        }
+
+        // CRITICAL: Try deleting with the slash if the domain has one
+        // The API might expect the exact FQDN as returned, including trailing slash
+        let cleanDomain = domain // DON'T remove trailing slash
+        print("🗑️ Attempting to remove domain: '\(domain)' (cleaned: '\(cleanDomain)') from app \(application.id)")
+        print("🔗 DELETE URL will be: https://api.clever-cloud.com/v2/organisations/\(orgId)/applications/\(application.id)/vhosts/\(cleanDomain)")
+
+        // Log current domains before deletion
+        print("📋 Current domains before deletion: \(domains.map { $0.fqdn }.joined(separator: ", "))")
+
+        isDeletingDomain = true
+        domainsError = nil
+
+        cleverCloudSDK.applications.removeDomain(
+            applicationId: application.id,
+            organizationId: orgId,
+            domain: cleanDomain
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                isDeletingDomain = false
+                if case .failure(let error) = completion {
+                    domainsError = "Failed to remove domain: \(error.localizedDescription)"
+                    print("❌ Failed to remove domain: \(error)")
+                    print("🔍 Error details: \(error)")
+                }
+            },
+            receiveValue: { response in
+                print("✅ Domain deletion API returned success")
+                print("🔍 Response type: \(type(of: response))")
+
+                // Wait longer before reloading to ensure server-side consistency
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    print("🔄 Reloading domains after deletion (2s delay)...")
+                    loadDomains()
+
+                    // Check again after additional delay to see if it's a consistency issue
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        print("🔄 Second check - reloading domains after 5s total...")
+                        loadDomains()
+                    }
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+
+    /// Validate domain format
+    private func isValidDomain(_ domain: String) -> Bool {
+        // Basic domain validation regex
+        let domainRegex = #"^([a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]\.)+[a-zA-Z]{2,}$"#
+        let domainPredicate = NSPredicate(format: "SELF MATCHES %@", domainRegex)
+
+        // Also allow simple domain without subdomain (e.g., "example.com")
+        let simpleDomainRegex = #"^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$"#
+        let simpleDomainPredicate = NSPredicate(format: "SELF MATCHES %@", simpleDomainRegex)
+
+        return domainPredicate.evaluate(with: domain) || simpleDomainPredicate.evaluate(with: domain)
+    }
+
+    /// Get the default Clever Cloud domain for the application
+    private var cleverAppDomain: String {
+        return "app-\(application.id).cleverapps.io"
+    }
+
     /// Reload application data from API after successful configuration change
     /// This ensures the UI displays the updated flavor information
     private func reloadApplicationFromAPI() {
@@ -2316,6 +2709,132 @@ struct FeatureBadge: View {
             ),
             organizationId: nil
         )
+    }
+}
+
+// MARK: - Add Domain Sheet
+
+extension ApplicationDetailView {
+    private var addDomainSheet: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                // Instructions
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                        Text("Add Custom Domain")
+                            .font(.headline)
+                    }
+
+                    Text("Enter your domain name without http:// or https://")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    Text("Examples: example.com, app.example.com, subdomain.example.org")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+
+                // Domain input field
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Domain Name")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    TextField("example.com", text: $newDomainName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                }
+
+                // DNS Configuration reminder
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("DNS Configuration Required")
+                            .font(.headline)
+                    }
+
+                    Text("After adding this domain, configure your DNS provider:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        // CNAME option
+                        HStack(alignment: .top) {
+                            Text("CNAME:")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 50, alignment: .leading)
+
+                            HStack {
+                                Text("domain.par.clever-cloud.com.")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.blue)
+
+                                Button(action: {
+                                    UIPasteboard.general.string = "domain.par.clever-cloud.com."
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.caption2)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+
+                        Text("OR")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 2)
+
+                        // A Records option
+                        HStack(alignment: .top) {
+                            Text("A Records:")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 50, alignment: .leading)
+
+                            Text("91.208.207.214-218, 220-223")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Add Domain")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        newDomainName = ""
+                        showingAddDomain = false
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") {
+                        addDomain()
+                    }
+                    .disabled(newDomainName.isEmpty || isAddingDomain)
+                }
+            }
+        }
     }
 }
 

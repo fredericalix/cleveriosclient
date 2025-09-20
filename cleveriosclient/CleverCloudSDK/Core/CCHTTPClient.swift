@@ -90,6 +90,7 @@ public final class CCHTTPClient: ObservableObject {
         _ endpoint: String,
         apiVersion: APIVersion = .v2
     ) -> AnyPublisher<T, CCError> {
+        // Use standard request method - OAuth signer now handles URL normalization correctly
         return request(method: .DELETE, endpoint: endpoint, body: nil as String?, apiVersion: apiVersion)
     }
     
@@ -220,11 +221,26 @@ public final class CCHTTPClient: ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        // Create request
+        // Create request - URLRequest may normalize the URL and add trailing slashes
+        // We need to handle this carefully for OAuth signature matching
         var request = URLRequest(url: url)
+
+        // CRITICAL FIX: If URLRequest added a trailing slash that wasn't in the original URL,
+        // we need to recreate it without the slash
+        if let requestPath = request.url?.path,
+           requestPath.hasSuffix("/") && !url.path.hasSuffix("/") {
+            // Create a new URL without the trailing slash
+            if var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                components.path = url.path  // Use the original path without modifications
+                if let fixedURL = components.url {
+                    request = URLRequest(url: fixedURL)
+                }
+            }
+        }
+
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
+
         // Add OAuth 1.0a authentication headers
         do {
             request = try oauthSigner.signRequest(request)
@@ -232,9 +248,14 @@ public final class CCHTTPClient: ObservableObject {
             return Fail(error: CCError.authenticationFailed)
                 .eraseToAnyPublisher()
         }
-        
+
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(url)")
+            // Log the actual URL being used in the request after OAuth signing
+            let requestURL = request.url?.absoluteString ?? "No URL"
+            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(requestURL)")
+            if let authHeader = request.value(forHTTPHeaderField: "Authorization") {
+                RemoteLogger.shared.debug("🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
+            }
         }
         
         // Perform request
@@ -250,9 +271,27 @@ public final class CCHTTPClient: ObservableObject {
                         "statusCode": "\(httpResponse.statusCode)",
                         "url": httpResponse.url?.absoluteString ?? "unknown"
                     ])
-                    
+
                     if let responseString = String(data: data, encoding: .utf8) {
                         RemoteLogger.shared.debug("📦 Raw response: \(responseString.prefix(500))")
+                    }
+
+                    // EMERGENCY DEBUG: Log ALL HTTP responses to find the DELETE
+                    if let url = httpResponse.url?.absoluteString {
+                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] URL: \(url)")
+                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] Status: \(httpResponse.statusCode)")
+
+                        // Special focus on vhosts operations
+                        if url.contains("vhosts") {
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] FOUND VHOSTS URL: \(url)")
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Status: \(httpResponse.statusCode)")
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Headers: \(httpResponse.allHeaderFields)")
+                            if let responseString = String(data: data, encoding: .utf8) {
+                                RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: '\(responseString)'")
+                            } else {
+                                RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: (binary data, \(data.count) bytes)")
+                            }
+                        }
                     }
                 }
                 
@@ -413,15 +452,30 @@ public final class CCHTTPClient: ObservableObject {
         body: U?,
         apiVersion: APIVersion
     ) -> AnyPublisher<T, CCError> {
-        
+
         // Build URL
         guard let url = buildURL(endpoint: endpoint, apiVersion: apiVersion) else {
             return Fail(error: CCError.invalidURL)
                 .eraseToAnyPublisher()
         }
-        
-        // Create request
+
+        // Create request - URLRequest may normalize the URL and add trailing slashes
+        // We need to handle this carefully for OAuth signature matching
         var request = URLRequest(url: url)
+
+        // CRITICAL FIX: If URLRequest added a trailing slash that wasn't in the original URL,
+        // we need to recreate it without the slash
+        if let requestPath = request.url?.path,
+           requestPath.hasSuffix("/") && !url.path.hasSuffix("/") {
+            // Create a new URL without the trailing slash
+            if var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                components.path = url.path  // Use the original path without modifications
+                if let fixedURL = components.url {
+                    request = URLRequest(url: fixedURL)
+                }
+            }
+        }
+
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
@@ -457,7 +511,10 @@ public final class CCHTTPClient: ObservableObject {
         }
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(url)")
+            // Log the actual URL being used in the request, not the original URL
+            // This helps us debug OAuth signature issues
+            let requestURLString = request.url?.absoluteString ?? "No URL"
+            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(requestURLString)")
             if let authHeader = request.value(forHTTPHeaderField: "Authorization") {
                 RemoteLogger.shared.debug("🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
             }
@@ -498,6 +555,20 @@ public final class CCHTTPClient: ObservableObject {
                         "size": "\(data.count) bytes",
                         "preview": String(rawResponse.prefix(500))
                     ])
+
+                    // EMERGENCY DEBUG: Log ALL HTTP responses to find the DELETE
+                    if let url = httpResponse.url?.absoluteString {
+                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] URL: \(url)")
+                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] Status: \(httpResponse.statusCode)")
+
+                        // Special focus on vhosts operations
+                        if url.contains("vhosts") {
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] FOUND VHOSTS URL: \(url)")
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Status: \(httpResponse.statusCode)")
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Headers: \(httpResponse.allHeaderFields)")
+                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: '\(rawResponse)'")
+                        }
+                    }
                     
                     do {
                         let decoder = JSONDecoder()
@@ -654,19 +725,25 @@ public final class CCHTTPClient: ObservableObject {
     private func buildURL(endpoint: String, apiVersion: APIVersion) -> URL? {
         let baseURL = apiVersion == .v2 ? CCConfiguration.apiV2BaseURL : CCConfiguration.apiV4BaseURL
         let cleanEndpoint = endpoint.hasPrefix("/") ? endpoint : "/\(endpoint)"
-        let urlString = baseURL + cleanEndpoint
-        
-        // Log URL construction for metrics endpoints
-        if endpoint.contains("metrics") || endpoint.contains("stats") {
-            RemoteLogger.shared.debug("[CleverMetrics] Building URL", metadata: [
+        var urlString = baseURL + cleanEndpoint
+
+        // Critical: Remove any trailing slash from the URL string before creating URL object
+        // This prevents URL normalization issues that cause OAuth signature mismatch
+        if urlString.hasSuffix("/") && !urlString.hasSuffix("://") {
+            urlString = String(urlString.dropLast())
+        }
+
+        // Log URL construction for debugging
+        if configuration.enableDebugLogging {
+            RemoteLogger.shared.debug("[CCHTTPClient] Building URL", metadata: [
                 "baseURL": baseURL,
                 "endpoint": endpoint,
                 "cleanEndpoint": cleanEndpoint,
-                "fullURL": urlString,
+                "finalURL": urlString,
                 "apiVersion": apiVersion == .v2 ? "v2" : "v4"
             ])
         }
-        
+
         return URL(string: urlString)
     }
     

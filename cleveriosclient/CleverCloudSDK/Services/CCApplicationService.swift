@@ -314,37 +314,63 @@ public class CCApplicationService: ObservableObject {
     }
     
     // MARK: - Domains
-    
-    /// Get domains for an application
+
+    /// Get domains for an application (using self endpoint)
     /// - Parameter applicationId: The application ID
     /// - Returns: Publisher with array of domains
     public func getDomains(applicationId: String) -> AnyPublisher<[CCDomain], CCError> {
         return httpClient.get("/self/applications/\(applicationId)/vhosts", apiVersion: .v2)
     }
-    
+
+    /// Get domains for an application with organization context
+    /// - Parameters:
+    ///   - applicationId: The application ID
+    ///   - organizationId: The organization ID
+    /// - Returns: Publisher with array of domains
+    public func getDomainsForOrganization(applicationId: String, organizationId: String) -> AnyPublisher<[CCDomain], CCError> {
+        return httpClient.get("/organisations/\(organizationId)/applications/\(applicationId)/vhosts", apiVersion: .v2)
+    }
+
     /// Add a domain to an application
     /// - Parameters:
     ///   - applicationId: The application ID
+    ///   - organizationId: The organization ID
     ///   - domain: Domain name to add
-    public func addDomain(applicationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
-        return httpClient.put("/self/applications/\(applicationId)/vhosts/\(domain)", body: EmptyRequest(), apiVersion: .v2)
+    public func addDomain(applicationId: String, organizationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
+        // Encode domain name like clever-tools does
+        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
+            return Fail(error: CCError.invalidParameters("Invalid domain name"))
+                .eraseToAnyPublisher()
+        }
+        return httpClient.put("/organisations/\(organizationId)/applications/\(applicationId)/vhosts/\(encodedDomain)", body: EmptyRequest(), apiVersion: .v2)
     }
-    
+
     /// Remove a domain from an application
     /// - Parameters:
     ///   - applicationId: The application ID
+    ///   - organizationId: The organization ID
     ///   - domain: Domain name to remove
-    public func removeDomain(applicationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
-        return httpClient.delete("/self/applications/\(applicationId)/vhosts/\(domain)", apiVersion: .v2)
+    public func removeDomain(applicationId: String, organizationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
+        // CRITICAL: We MUST encode the domain EXACTLY like clever-tools does with encodeURIComponent
+        // JavaScript encodeURIComponent encodes everything EXCEPT: A-Z a-z 0-9 - _ . ! ~ * ' ( )
+        // This means dots (.) should NOT be encoded in encodeURIComponent
+        let jsEncodeURIComponentAllowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: jsEncodeURIComponentAllowed) else {
+            return Fail(error: CCError.invalidParameters("Failed to encode domain name"))
+                .eraseToAnyPublisher()
+        }
+
+        return httpClient.delete("/organisations/\(organizationId)/applications/\(applicationId)/vhosts/\(encodedDomain)", apiVersion: .v2)
     }
-    
+
     /// Set favorite domain for an application
     /// - Parameters:
     ///   - applicationId: The application ID
+    ///   - organizationId: The organization ID
     ///   - domain: Domain to set as favorite
-    public func setFavoriteDomain(applicationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
+    public func setFavoriteDomain(applicationId: String, organizationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
         let body = FavoriteDomainRequest(fqdn: domain)
-        return httpClient.put("/self/applications/\(applicationId)/vhosts/favourite", body: body, apiVersion: .v2)
+        return httpClient.put("/organisations/\(organizationId)/applications/\(applicationId)/vhosts/favourite", body: body, apiVersion: .v2)
     }
     
     // MARK: - Deployment Management
