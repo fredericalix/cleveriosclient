@@ -2241,9 +2241,10 @@ struct ContentView: View {
         }
 
         // Auto-refresh apps and addons list every 10 seconds
+        // Skip refresh when user is in a detail view to avoid navigation pop
         dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
-                if selectedOrganization != nil {
+                if selectedOrganization != nil && selectedDetailView == .dashboard {
                     testGetApplications()
                     testGetAddons()
                 }

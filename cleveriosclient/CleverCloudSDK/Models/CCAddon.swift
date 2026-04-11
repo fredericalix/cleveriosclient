@@ -103,7 +103,7 @@ public struct CCAddon: Codable, Identifiable, Equatable {
         case createdAt = "creation_date"
         case status
         case configUrl = "config_url"
-        case realId = "real_id"
+        case realId
         case zoneId
         case env
     }

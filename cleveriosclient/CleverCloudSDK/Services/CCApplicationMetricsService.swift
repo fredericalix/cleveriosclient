@@ -694,7 +694,8 @@ public class CCApplicationMetricsService: ObservableObject {
                         var adjustedValue = value
 
                         // Convert memory percentage to bytes using actual flavor memory
-                        if metricType == .memoryUsage && name == "mem" && value <= 100.0 {
+                        // When totalMemoryMB is 0 (addons), keep raw percentage
+                        if metricType == .memoryUsage && name == "mem" && value <= 100.0 && totalMemoryMB > 0 {
                             adjustedValue = (value / 100.0) * totalMemoryMB * 1024 * 1024
                         }
 

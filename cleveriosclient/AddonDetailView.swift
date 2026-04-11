@@ -5,7 +5,7 @@ import Charts
 struct AddonDetailView: View {
     let addon: CCAddon
     let organizationId: String?
-    @ObservedObject var viewModel: CleverCloudViewModel
+    var viewModel: CleverCloudViewModel
     
     // MARK: - iPad Detection
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
@@ -42,7 +42,15 @@ struct AddonDetailView: View {
     @State private var logsTimer: Timer?
     
     @State private var cancellables = Set<AnyCancellable>()
-    
+
+    // Metrics-related states
+    @State private var selectedMetricsPeriod = "PT1H"
+    @State private var isLoadingMetrics = false
+    @State private var pendingAddonMetricsLoads = 0
+    @State private var addonMetricsError: String?
+    @State private var addonCpuData: [CCApplicationMetricPoint] = []
+    @State private var addonMemData: [CCApplicationMetricPoint] = []
+
     // Destroy addon state
     @State private var showingDestroyConfirmation = false
     @State private var isDestroying = false
@@ -81,6 +89,14 @@ struct AddonDetailView: View {
                         Text("Configuration")
                     }
                     .tag(2)
+
+                // Tab 4: Metrics (PostgreSQL, MySQL, Redis only)
+                metricsTab
+                    .tabItem {
+                        Image(systemName: "chart.xyaxis.line")
+                        Text("Metrics")
+                    }
+                    .tag(3)
             }
         }
         .navigationTitle(isIpad ? "" : addon.name)
@@ -715,8 +731,163 @@ struct AddonDetailView: View {
         }
     }
     
+    // MARK: - Tab 4: Metrics
+
+    private var addonSupportsMetrics: Bool {
+        let pid = addon.provider.id.lowercased()
+        return pid.contains("postgresql") || pid.contains("mysql") || pid.contains("redis")
+    }
+
+    private var metricsTab: some View {
+        Group {
+            if !addonSupportsMetrics {
+                VStack(spacing: 16) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.system(size: 50))
+                        .foregroundColor(.secondary)
+                    Text("Metrics not available")
+                        .font(.title3)
+                        .fontWeight(.medium)
+                    Text("Metrics are available for PostgreSQL, MySQL, and Redis add-ons")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Performance Metrics")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+
+                    Spacer()
+
+                    Picker("Period", selection: $selectedMetricsPeriod) {
+                        Text("1H").tag("PT1H")
+                        Text("6H").tag("PT6H")
+                        Text("24H").tag("PT24H")
+                        Text("7D").tag("P7D")
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .frame(width: 200)
+                }
+
+                if let error = addonMetricsError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                MetricsGraphView(
+                    title: "CPU Usage",
+                    dataPoints: addonCpuData,
+                    metricType: .cpuUsage,
+                    isLoading: isLoadingMetrics,
+                    period: formatAddonPeriod(selectedMetricsPeriod),
+                    rawPeriod: selectedMetricsPeriod
+                )
+
+                MetricsGraphView(
+                    title: "Memory Usage",
+                    dataPoints: addonMemData,
+                    metricType: .cpuUsage, // Display as percentage (same format as CPU)
+                    isLoading: isLoadingMetrics,
+                    period: formatAddonPeriod(selectedMetricsPeriod),
+                    rawPeriod: selectedMetricsPeriod
+                )
+            }
+            .padding()
+        }
+        .onAppear {
+            loadAddonMetrics()
+        }
+        .onChange(of: selectedMetricsPeriod) { _, _ in
+            loadAddonMetrics()
+        }
+            } // else
+        } // Group
+    }
+
+    private func formatAddonPeriod(_ period: String) -> String {
+        switch period {
+        case "PT1H": return "Last Hour"
+        case "PT6H": return "Last 6 Hours"
+        case "PT24H": return "Last 24 Hours"
+        case "P7D": return "Last 7 Days"
+        default: return "Last Hour"
+        }
+    }
+
+    private func intervalForAddonPeriod(_ period: String) -> String {
+        switch period {
+        case "PT1H": return "PT5M"
+        case "PT6H": return "PT15M"
+        case "PT24H": return "PT1H"
+        case "P7D": return "PT6H"
+        default: return "PT5M"
+        }
+    }
+
+    // MARK: - Addon Metrics Loading
+
+    private func loadAddonMetrics() {
+        guard let orgId = organizationId else { return }
+        let resourceId = addon.realId ?? addon.id
+
+        addonMetricsError = nil
+        let metrics: [MetricType] = [.cpuUsage, .memoryUsage]
+        pendingAddonMetricsLoads = metrics.count
+        isLoadingMetrics = true
+
+        let metricsService = CCApplicationMetricsService(
+            httpClient: viewModel.cleverCloudSDK.httpClient
+        )
+
+        for metric in metrics {
+            metricsService.getApplicationTimeSeries(
+                applicationId: resourceId,
+                organizationId: orgId,
+                metric: metric,
+                interval: intervalForAddonPeriod(selectedMetricsPeriod),
+                span: selectedMetricsPeriod,
+                totalMemoryMB: 0 // Keep memory as percentage for addons
+            )
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        self.addonMetricsError = "Failed to load \(metric.displayName): \(error.localizedDescription)"
+                    }
+                    self.pendingAddonMetricsLoads -= 1
+                    if self.pendingAddonMetricsLoads <= 0 {
+                        self.isLoadingMetrics = false
+                    }
+                },
+                receiveValue: { dataPoints in
+                    switch metric {
+                    case .cpuUsage:
+                        self.addonCpuData = dataPoints
+                    case .memoryUsage:
+                        self.addonMemData = dataPoints
+                    default:
+                        break
+                    }
+                }
+            )
+            .store(in: &cancellables)
+        }
+    }
+
     // MARK: - Data Loading
-    
+
     private func loadAddonData() {
         errorMessage = nil
         
