@@ -884,27 +884,23 @@ struct ApplicationDetailView: View {
                 .padding(.vertical, 4)
             }
 
-            // CPU Usage Graph
-            MetricsGraphView(
-                title: "CPU Usage",
-                dataPoints: cpuMetricsData,
-                metricType: .cpuUsage,
-                isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod),
-                rawPeriod: selectedMetricsPeriod
-            )
+            // CPU & Memory current values
+            HStack(spacing: 16) {
+                MetricValueCard(
+                    title: "CPU Usage",
+                    dataPoint: cpuMetricsData.last,
+                    color: .blue,
+                    isLoading: isLoadingMetrics
+                )
+                MetricValueCard(
+                    title: "Memory",
+                    dataPoint: memoryMetricsData.last,
+                    color: .green,
+                    isLoading: isLoadingMetrics
+                )
+            }
 
-            // Memory Usage Graph
-            MetricsGraphView(
-                title: "Memory Usage",
-                dataPoints: memoryMetricsData,
-                metricType: .memoryUsage,
-                isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod),
-                rawPeriod: selectedMetricsPeriod
-            )
-
-            // Network I/O Graphs in vertical layout
+            // Network I/O Graphs
             MetricsGraphView(
                 title: "Network In",
                 dataPoints: networkInMetricsData,

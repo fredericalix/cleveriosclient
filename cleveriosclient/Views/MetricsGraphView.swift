@@ -445,6 +445,50 @@ public struct MetricsGraphView: View {
     }
 }
 
+// MARK: - Metric Value Card
+
+/// Displays a single metric value as a card (for CPU/Memory where the API returns only 1 data point)
+public struct MetricValueCard: View {
+    let title: String
+    let dataPoint: CCApplicationMetricPoint?
+    let color: Color
+    let isLoading: Bool
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+            } else if let point = dataPoint {
+                Text(point.formattedValue)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(color)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Text("--")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+}
+
 // MARK: - Preview
 
 #Preview {

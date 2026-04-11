@@ -786,23 +786,20 @@ struct AddonDetailView: View {
                     .padding(.vertical, 4)
                 }
 
-                MetricsGraphView(
-                    title: "CPU Usage",
-                    dataPoints: addonCpuData,
-                    metricType: .cpuUsage,
-                    isLoading: isLoadingMetrics,
-                    period: formatAddonPeriod(selectedMetricsPeriod),
-                    rawPeriod: selectedMetricsPeriod
-                )
-
-                MetricsGraphView(
-                    title: "Memory Usage",
-                    dataPoints: addonMemData,
-                    metricType: .cpuUsage, // Display as percentage (same format as CPU)
-                    isLoading: isLoadingMetrics,
-                    period: formatAddonPeriod(selectedMetricsPeriod),
-                    rawPeriod: selectedMetricsPeriod
-                )
+                HStack(spacing: 16) {
+                    MetricValueCard(
+                        title: "CPU Usage",
+                        dataPoint: addonCpuData.last,
+                        color: .blue,
+                        isLoading: isLoadingMetrics
+                    )
+                    MetricValueCard(
+                        title: "Memory",
+                        dataPoint: addonMemData.last,
+                        color: .green,
+                        isLoading: isLoadingMetrics
+                    )
+                }
             }
             .padding()
         }
