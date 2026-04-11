@@ -14,7 +14,6 @@ struct CreateAddonView: View {
     @State private var isLoadingProviders = false
     @Environment(\.dismiss) private var dismiss
     @Environment(AppCoordinator.self) private var coordinator
-    @EnvironmentObject var cleverCloudVM: CleverCloudViewModel
     
     // MARK: - Form State
     
@@ -483,9 +482,6 @@ extension CreateAddonView {
 
 #Preview {
     let coordinator = AppCoordinator()
-    let cleverCloudVM = CleverCloudViewModel(cleverCloudSDK: coordinator.cleverCloudSDK)
-    
     return CreateAddonView(selectedOrganization: nil, onAddonCreated: nil)
         .environment(coordinator)
-        .environmentObject(cleverCloudVM)
 }

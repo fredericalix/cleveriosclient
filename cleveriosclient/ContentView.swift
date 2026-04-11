@@ -323,7 +323,6 @@ struct ContentView: View {
                 }
             })
                 .environment(coordinator)
-                .environmentObject(CleverCloudViewModel(cleverCloudSDK: cleverCloudSDK))
         }
     }
     
@@ -416,7 +415,7 @@ struct ContentView: View {
                     AddonDetailView(
                         addon: addon,
                         organizationId: selectedOrganization?.id,
-                        viewModel: CleverCloudViewModel(cleverCloudSDK: cleverCloudSDK)
+                        cleverCloudSDK: cleverCloudSDK
                     )
                 } else {
                     iPadDashboardView
@@ -1518,7 +1517,7 @@ struct ContentView: View {
     }
     
     private func addonRow(_ addon: CCAddon) -> some View {
-        NavigationLink(destination: AddonDetailView(addon: addon, organizationId: selectedOrganization?.id, viewModel: CleverCloudViewModel(cleverCloudSDK: cleverCloudSDK))) {
+        NavigationLink(destination: AddonDetailView(addon: addon, organizationId: selectedOrganization?.id, cleverCloudSDK: cleverCloudSDK)) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "puzzlepiece.extension")
@@ -2240,16 +2239,10 @@ struct ContentView: View {
             }
         }
 
-        // Auto-refresh apps and addons list every 10 seconds
-        // Skip refresh when user is in a detail view to avoid navigation pop
-        dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
-            Task { @MainActor in
-                if selectedOrganization != nil && selectedDetailView == .dashboard {
-                    testGetApplications()
-                    testGetAddons()
-                }
-            }
-        }
+        // Note: Auto-refresh of apps/addons list disabled to prevent
+        // navigation pop on iPhone (recreating @State arrays invalidates NavigationLinks).
+        // The 15s polling timer handles status updates. Full list refresh happens
+        // when switching organizations or returning to the dashboard.
     }
 
     private func stopIntelligentPolling() {

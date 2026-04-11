@@ -5,7 +5,7 @@ import Charts
 struct AddonDetailView: View {
     let addon: CCAddon
     let organizationId: String?
-    var viewModel: CleverCloudViewModel
+    let cleverCloudSDK: CleverCloudSDK
     
     // MARK: - iPad Detection
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
@@ -848,7 +848,7 @@ struct AddonDetailView: View {
         isLoadingMetrics = true
 
         let metricsService = CCApplicationMetricsService(
-            httpClient: viewModel.cleverCloudSDK.httpClient
+            httpClient: cleverCloudSDK.httpClient
         )
 
         for metric in metrics {
@@ -917,7 +917,7 @@ struct AddonDetailView: View {
         print("🔍 Loading env vars for addon: \(addon.name)")
         print("🔍 Using addon ID: \(addonIdToUse) (realId: \(addon.realId ?? "nil"), id: \(addon.id))")
         
-        viewModel.cleverCloudSDK.addons.getAddonEnvironmentVariables(
+        cleverCloudSDK.addons.getAddonEnvironmentVariables(
             addonId: addonIdToUse,
             organizationId: organizationId
         )
@@ -942,7 +942,7 @@ struct AddonDetailView: View {
     }
     
     private func loadSSOData() {
-        viewModel.cleverCloudSDK.addons.getAddonSSOData(
+        cleverCloudSDK.addons.getAddonSSOData(
             addonId: addon.id,
             organizationId: organizationId
         )
@@ -1005,8 +1005,8 @@ struct AddonDetailView: View {
         isLoadingLogs = true
         logsError = nil
         
-        viewModel.cleverCloudSDK.addons.getAddonLogs(
-            addonId: addon.realId ?? addon.id,
+        cleverCloudSDK.addons.getAddonLogs(
+            addonId: addon.id,
             organizationId: organizationId,
             limit: 100,
             order: "desc"
@@ -1064,7 +1064,7 @@ struct AddonDetailView: View {
         
         isDestroying = true
         
-        viewModel.cleverCloudSDK.addons.deleteAddon(addonId: addon.id, organizationId: organizationId)
+        cleverCloudSDK.addons.deleteAddon(addonId: addon.id, organizationId: organizationId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
@@ -1439,12 +1439,12 @@ struct ChartCard: View {
                 status: "running"
             ),
             organizationId: "org_123",
-            viewModel: CleverCloudViewModel(cleverCloudSDK: CleverCloudSDK(
+            cleverCloudSDK: CleverCloudSDK(
                 configuration: CCConfiguration(
                     consumerKey: "test",
                     consumerSecret: "test"
                 )
-            ))
+            )
         )
     }
 }

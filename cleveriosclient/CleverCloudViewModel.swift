@@ -39,10 +39,6 @@ class CleverCloudViewModel: ObservableObject {
     
     init(cleverCloudSDK: CleverCloudSDK) {
         self._cleverCloudSDK = cleverCloudSDK
-        // Load organizations after initialization
-        DispatchQueue.main.async {
-            self.loadOrganizations()
-        }
     }
     
     // MARK: - Organization Methods

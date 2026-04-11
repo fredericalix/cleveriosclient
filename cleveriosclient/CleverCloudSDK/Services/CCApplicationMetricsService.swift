@@ -699,11 +699,18 @@ public class CCApplicationMetricsService: ObservableObject {
                             adjustedValue = (value / 100.0) * totalMemoryMB * 1024 * 1024
                         }
 
+                        // For addon memory (totalMemoryMB == 0), store as "cpu" type
+                        // so formattedValue displays as percentage, not bytes
+                        let pointMetricType = (metricType == .memoryUsage && totalMemoryMB == 0)
+                            ? MetricType.cpuUsage.rawValue : metricType.rawValue
+                        let pointUnit = (metricType == .memoryUsage && totalMemoryMB == 0)
+                            ? "%" : metricType.unit
+
                         let point = CCApplicationMetricPoint(
                             timestamp: Date(timeIntervalSince1970: timestampMicros / 1_000_000),
                             value: adjustedValue,
-                            metricType: metricType.rawValue,
-                            unit: metricType.unit
+                            metricType: pointMetricType,
+                            unit: pointUnit
                         )
                         points.append(point)
                     }
