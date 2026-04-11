@@ -506,22 +506,24 @@ public class CCApplicationService: ObservableObject {
         limit: Int = 100,
         order: String = "desc"
     ) -> AnyPublisher<[CCLogEntry], CCError> {
-        // Use v4 SSE logs endpoint (v2 endpoint returns empty)
+        // v4 SSE logs endpoint requires &since= to return historical logs
+        let since = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-24 * 3600))
+
         guard let orgId = organizationId else {
-            // For personal space, use /self path
-            let endpoint = "/logs/self/applications/\(applicationId)/logs?limit=\(limit)"
+            let endpoint = "/logs/self/applications/\(applicationId)/logs?limit=\(limit)&since=\(since)"
             return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
         }
 
-        let endpoint = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs?limit=\(limit)"
+        let endpoint = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs?limit=\(limit)&since=\(since)"
         return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
     }
 
     /// Fetch logs from SSE endpoint and parse into CCLogEntry array
     private func fetchSSELogs(endpoint: String, apiVersion: APIVersion) -> AnyPublisher<[CCLogEntry], CCError> {
-        return httpClient.getRawString(endpoint, apiVersion: apiVersion)
-            .map { sseText -> [CCLogEntry] in
-                self.parseSSELogEvents(sseText)
+        return httpClient.getSSEData(endpoint, apiVersion: apiVersion, timeout: 10.0)
+            .map { data -> [CCLogEntry] in
+                let sseText = String(data: data, encoding: .utf8) ?? ""
+                return self.parseSSELogEvents(sseText)
             }
             .eraseToAnyPublisher()
     }

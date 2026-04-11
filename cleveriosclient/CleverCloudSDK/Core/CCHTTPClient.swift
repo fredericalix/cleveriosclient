@@ -785,6 +785,101 @@ public final class CCHTTPClient: ObservableObject {
             throw CCError.httpError(statusCode: httpResponse.statusCode, message: "HTTP error")
         }
     }
+
+    // MARK: - SSE Request Method
+
+    /// Perform GET request to an SSE (Server-Sent Events) endpoint.
+    /// Collects streamed log events until a HEARTBEAT arrives after log data,
+    /// or until `timeout` seconds elapse (whichever comes first).
+    public func getSSEData(
+        _ endpoint: String,
+        apiVersion: APIVersion = .v4,
+        timeout: TimeInterval = 10.0
+    ) -> AnyPublisher<Data, CCError> {
+        guard let url = buildURL(endpoint: endpoint, apiVersion: apiVersion) else {
+            return Fail(error: CCError.invalidURL).eraseToAnyPublisher()
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+
+        do {
+            request = try oauthSigner.signRequest(request)
+        } catch {
+            return Fail(error: CCError.authenticationFailed).eraseToAnyPublisher()
+        }
+
+        return Future<Data, CCError> { promise in
+            let collector = SSEDataCollector(promise: promise)
+            let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
+            let task = session.dataTask(with: request)
+            collector.session = session
+            task.resume()
+
+            // Hard timeout as safety net
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                collector.finish(task: task)
+            }
+        }
+        .receive(on: DispatchQueue.main)
+        .eraseToAnyPublisher()
+    }
+}
+
+// MARK: - SSE Data Collector
+
+/// Delegate that accumulates SSE data. Finishes when it detects a HEARTBEAT
+/// after having received at least one APPLICATION_LOG event (meaning the
+/// historical log burst is over and we're now in live-tail mode).
+private final class SSEDataCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private var accumulatedData = Data()
+    private let promise: (Result<Data, CCError>) -> Void
+    private var completed = false
+    private var hasReceivedLogEvents = false
+    var session: URLSession?
+
+    init(promise: @escaping (Result<Data, CCError>) -> Void) {
+        self.promise = promise
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        accumulatedData.append(data)
+
+        // Check if we received log events followed by a heartbeat
+        if let text = String(data: data, encoding: .utf8) {
+            if text.contains("APPLICATION_LOG") {
+                hasReceivedLogEvents = true
+            }
+            // If we already got log events and now see a heartbeat,
+            // the historical burst is done - finish collecting
+            if hasReceivedLogEvents && text.contains("HEARTBEAT") {
+                finish(task: dataTask)
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard !completed else { return }
+        completed = true
+        self.session?.invalidateAndCancel()
+
+        if !accumulatedData.isEmpty {
+            promise(.success(accumulatedData))
+        } else if let error = error {
+            promise(.failure(CCError.networkError(error)))
+        } else {
+            promise(.success(Data()))
+        }
+    }
+
+    func finish(task: URLSessionTask) {
+        guard !completed else { return }
+        completed = true
+        task.cancel()
+        self.session?.invalidateAndCancel()
+        promise(.success(accumulatedData))
+    }
 }
 
 // MARK: - Supporting Types
