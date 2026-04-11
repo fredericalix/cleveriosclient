@@ -15,24 +15,27 @@ public struct MetricsGraphView: View {
     let metricType: MetricType
     let isLoading: Bool
     let period: String
-    
+    let rawPeriod: String
+
     @State private var selectedDataPoint: CCApplicationMetricPoint?
     @State private var showDetails = false
-    
+
     // MARK: - Initialization
-    
+
     public init(
         title: String,
         dataPoints: [CCApplicationMetricPoint],
         metricType: MetricType,
         isLoading: Bool = false,
-        period: String = "Last 24h"
+        period: String = "Last 24h",
+        rawPeriod: String = "PT24H"
     ) {
         self.title = title
         self.dataPoints = dataPoints
         self.metricType = metricType
         self.isLoading = isLoading
         self.period = period
+        self.rawPeriod = rawPeriod
     }
     
     // MARK: - Body
@@ -52,7 +55,7 @@ public struct MetricsGraphView: View {
             }
         }
         .padding()
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
@@ -179,17 +182,17 @@ public struct MetricsGraphView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.white)
+                        .background(Color(.secondarySystemBackground))
                         .cornerRadius(6)
                         .shadow(radius: 2)
                     }
             }
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: .hour, count: 4)) { value in
+            AxisMarks(values: .stride(by: xAxisStrideComponent, count: xAxisStrideCount)) { _ in
                 AxisGridLine()
                 AxisTick()
-                AxisValueLabel(format: .dateTime.hour(.defaultDigits(amPM: .omitted)))
+                AxisValueLabel(format: xAxisLabelFormat)
             }
         }
         .chartYAxis {
@@ -282,6 +285,39 @@ public struct MetricsGraphView: View {
     
     // MARK: - Computed Properties
     
+    private var xAxisStrideComponent: Calendar.Component {
+        switch rawPeriod {
+        case "PT1H": return .minute
+        case "PT6H": return .hour
+        case "PT24H": return .hour
+        case "P7D": return .day
+        default: return .hour
+        }
+    }
+
+    private var xAxisStrideCount: Int {
+        switch rawPeriod {
+        case "PT1H": return 15
+        case "PT6H": return 1
+        case "PT24H": return 4
+        case "P7D": return 1
+        default: return 4
+        }
+    }
+
+    private var xAxisLabelFormat: Date.FormatStyle {
+        switch rawPeriod {
+        case "PT1H":
+            return .dateTime.hour().minute()
+        case "PT6H":
+            return .dateTime.hour(.defaultDigits(amPM: .omitted))
+        case "P7D":
+            return .dateTime.weekday(.abbreviated)
+        default:
+            return .dateTime.hour(.defaultDigits(amPM: .omitted))
+        }
+    }
+
     private var colorForMetric: Color {
         switch metricType {
         case .cpuUsage: return .blue

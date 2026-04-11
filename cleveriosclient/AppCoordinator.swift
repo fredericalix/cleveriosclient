@@ -44,7 +44,7 @@ final class AppCoordinator {
     }
     
     // MARK: - Initialization
-    
+
     init() {
         self.isAuthenticated = false
         self.isCheckingAuth = true

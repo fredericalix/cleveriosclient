@@ -455,24 +455,22 @@ struct ScalabilityConfigurationView: View {
                 )
                 
                 // 🚀 REAL API CALL: Apply configuration using CCEnvironmentService
-                let _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CCConfigurationUpdateResponse, Error>) in
+                let _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     cleverCloudSDK.environment.updateInstanceConfiguration(
                         for: application.id,
                         instanceConfig: targetInstanceConfig,
                         organizationId: organizationId
                     )
-                                            .sink(
-                            receiveCompletion: { completion in
-                                if case .failure(let error) = completion {
-                                    continuation.resume(throwing: error)
-                                }
-                            },
-                            receiveValue: { response in
-                                Task { @MainActor in
-                                    continuation.resume(returning: response)
-                                }
+                    .sink(
+                        receiveCompletion: { completion in
+                            if case .failure(let error) = completion {
+                                continuation.resume(throwing: error)
                             }
-                        )
+                        },
+                        receiveValue: { _ in
+                            continuation.resume(returning: ())
+                        }
+                    )
                     .store(in: &cancellables)
                 }
                 
@@ -482,7 +480,7 @@ struct ScalabilityConfigurationView: View {
                 
                 // 🔄 AUTO-REDEPLOY: Like clever-tools, automatically redeploy after scaling change
                 do {
-                    let _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CCDeployment, Error>) in
+                    let _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                         cleverCloudSDK.deployments.redeployApplication(
                             applicationId: application.id,
                             organizationId: organizationId
@@ -493,10 +491,8 @@ struct ScalabilityConfigurationView: View {
                                     continuation.resume(throwing: error)
                                 }
                             },
-                            receiveValue: { deployment in
-                                Task { @MainActor in
-                                    continuation.resume(returning: deployment)
-                                }
+                            receiveValue: { _ in
+                                continuation.resume(returning: ())
                             }
                         )
                         .store(in: &cancellables)

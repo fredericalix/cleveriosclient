@@ -141,7 +141,8 @@ public class CCApplicationMetricsService: ObservableObject {
         organizationId: String,
         metric: MetricType,
         interval: String = "PT5M",
-        span: String = "PT1H"
+        span: String = "PT1H",
+        totalMemoryMB: Double = 512.0
     ) -> AnyPublisher<[CCApplicationMetricPoint], CCError> {
 
         print("📈 [CCApplicationMetricsService] Getting time series for metric '\(metric.rawValue)'")
@@ -194,7 +195,7 @@ public class CCApplicationMetricsService: ObservableObject {
                 }
 
                 // Parse the time series response
-                return try self.parseTimeSeriesResponse(data: data, metricType: metric)
+                return try self.parseTimeSeriesResponse(data: data, metricType: metric, totalMemoryMB: totalMemoryMB)
             }
             .mapError { error in
                 if let ccError = error as? CCError {
@@ -202,26 +203,9 @@ public class CCApplicationMetricsService: ObservableObject {
                 }
                 return CCError.parsingError(error)
             }
-            .handleEvents(
-                receiveOutput: { dataPoints in
-                    print("✅ [CCApplicationMetricsService] SUCCESS! Received \(dataPoints.count) data points for metric \(metric.rawValue)")
-                },
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        print("❌ [CCApplicationMetricsService] Request failed: \(error)")
-                    }
-                }
-            )
-            .catch { error -> AnyPublisher<[CCApplicationMetricPoint], CCError> in
-                // Return empty array instead of mock data
-                print("⚠️ [CCApplicationMetricsService] Time series request failed: \(error)")
-                return Just([])
-                    .setFailureType(to: CCError.self)
-                    .eraseToAnyPublisher()
-            }
             .eraseToAnyPublisher()
     }
-    
+
     /// Start real-time metrics polling
     /// - Parameters:
     ///   - applicationId: The application ID
@@ -239,11 +223,14 @@ public class CCApplicationMetricsService: ObservableObject {
         return Timer.publish(every: interval, on: .main, in: .common)
             .autoconnect()
             .prepend(Date()) // Emit immediately
-            .flatMap { _ in
-                self.getApplicationMetrics(
+            .flatMap { [weak self] _ -> AnyPublisher<CCApplicationMetrics, CCError> in
+                guard let self = self else {
+                    return Empty().eraseToAnyPublisher()
+                }
+                return self.getApplicationMetrics(
                     applicationId: applicationId,
                     organizationId: organizationId,
-                    period: "PT1H" // Use shorter period for real-time
+                    period: "PT1H"
                 )
             }
             .removeDuplicates { lhs, rhs in
@@ -301,22 +288,6 @@ public class CCApplicationMetricsService: ObservableObject {
                         }
                         return CCError.parsingError(error)
                     }
-                    .eraseToAnyPublisher()
-            }
-            .handleEvents(
-                receiveOutput: { dataPoints in
-                    print("✅ [CCApplicationMetricsService] Warp10: Received \(dataPoints.count) network data points")
-                },
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        print("❌ [CCApplicationMetricsService] Warp10 network metrics failed: \(error)")
-                    }
-                }
-            )
-            .catch { error -> AnyPublisher<[CCApplicationMetricPoint], CCError> in
-                print("⚠️ [CCApplicationMetricsService] Warp10 network request failed, returning empty: \(error)")
-                return Just([])
-                    .setFailureType(to: CCError.self)
                     .eraseToAnyPublisher()
             }
             .eraseToAnyPublisher()
@@ -580,26 +551,32 @@ public class CCApplicationMetricsService: ObservableObject {
     }
     
     /// Parse time series response from the v4 API
-    private func parseTimeSeriesResponse(data: Data, metricType: MetricType) throws -> [CCApplicationMetricPoint] {
+    private func parseTimeSeriesResponse(data: Data, metricType: MetricType, totalMemoryMB: Double = 512.0) throws -> [CCApplicationMetricPoint] {
         var points: [CCApplicationMetricPoint] = []
-        
-        // Log raw data size and preview
+
         RemoteLogger.shared.debug("[CleverMetrics] parseTimeSeriesResponse", metadata: [
             "dataSize": "\(data.count) bytes",
             "metricType": metricType.rawValue
         ])
-        
-        // Log raw response as string for debugging
+
         if let rawString = String(data: data, encoding: .utf8) {
             RemoteLogger.shared.debug("[CleverMetrics] Raw response string", metadata: [
                 "response": rawString.prefix(1000).description
             ])
         }
-        
-        // The v4 API returns an array of metric objects
-        guard let metricsArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+
+        // Parse top-level JSON - handle both array and dictionary formats
+        let jsonObject = try JSONSerialization.jsonObject(with: data)
+        let metricsArray: [[String: Any]]
+        if let array = jsonObject as? [[String: Any]] {
+            metricsArray = array
+        } else if let dict = jsonObject as? [String: Any] {
+            // Single metric object wrapped in a dictionary
+            metricsArray = [dict]
+        } else {
             RemoteLogger.shared.error("[CleverMetrics] Failed to parse JSON", metadata: [
-                "error": "Response is not an array"
+                "error": "Response is not an array or dictionary",
+                "type": "\(type(of: jsonObject))"
             ])
             return []
         }
@@ -682,47 +659,52 @@ public class CCApplicationMetricsService: ObservableObject {
                     
                     // Parse each data point
                     for (index, dataPoint) in dataArray.enumerated() {
-                        if index < 3 || index >= dataArray.count - 3 {
+                        if index < 3 {
                             RemoteLogger.shared.debug("[CleverMetrics] Data point \(index)", metadata: [
                                 "data": String(describing: dataPoint)
                             ])
                         }
-                        
-                        if let timestampMicros = dataPoint["timestamp"] as? Double,
-                           let valueString = dataPoint["value"] as? String,
-                           let value = Double(valueString) {
-                            
-                            // Adjust value based on metric type
-                            var adjustedValue = value
-                            
-                            // If memory is returned as percentage, convert to bytes (assuming 512MB total for nano)
-                            if metricType == .memoryUsage && name == "mem" {
-                                // Memory is returned as percentage, convert to bytes
-                                // Assuming 512MB total for nano instance
-                                let totalMemoryMB = 512.0
-                                adjustedValue = (value / 100.0) * totalMemoryMB * 1024 * 1024 // Convert to bytes
-                                RemoteLogger.shared.debug("[CleverMetrics] Converting memory percentage to bytes", metadata: [
-                                    "percentage": "\(value)%",
-                                    "bytes": "\(adjustedValue)"
-                                ])
-                            }
-                            
-                            // Convert microseconds to seconds for Date
-                            let point = CCApplicationMetricPoint(
-                                timestamp: Date(timeIntervalSince1970: timestampMicros / 1_000_000),
-                                value: adjustedValue,
-                                metricType: metricType.rawValue,
-                                unit: metricType.unit
-                            )
-                            points.append(point)
-                            
-                            if index < 3 {
-                                RemoteLogger.shared.debug("[CleverMetrics] Parsed point", metadata: [
-                                    "timestamp": point.timestamp.description,
-                                    "value": "\(value)"
-                                ])
-                            }
+
+                        // Parse timestamp - handle Double, Int, and String types
+                        let timestampMicros: Double
+                        if let tsDouble = dataPoint["timestamp"] as? Double {
+                            timestampMicros = tsDouble
+                        } else if let tsInt = dataPoint["timestamp"] as? Int {
+                            timestampMicros = Double(tsInt)
+                        } else if let tsString = dataPoint["timestamp"] as? String,
+                                  let tsParsed = Double(tsString) {
+                            timestampMicros = tsParsed
+                        } else {
+                            continue
                         }
+
+                        // Parse value - handle Double, Int, and String types
+                        let value: Double
+                        if let numValue = dataPoint["value"] as? Double {
+                            value = numValue
+                        } else if let intValue = dataPoint["value"] as? Int {
+                            value = Double(intValue)
+                        } else if let valueString = dataPoint["value"] as? String,
+                                  let parsedValue = Double(valueString) {
+                            value = parsedValue
+                        } else {
+                            continue
+                        }
+
+                        var adjustedValue = value
+
+                        // Convert memory percentage to bytes using actual flavor memory
+                        if metricType == .memoryUsage && name == "mem" && value <= 100.0 {
+                            adjustedValue = (value / 100.0) * totalMemoryMB * 1024 * 1024
+                        }
+
+                        let point = CCApplicationMetricPoint(
+                            timestamp: Date(timeIntervalSince1970: timestampMicros / 1_000_000),
+                            value: adjustedValue,
+                            metricType: metricType.rawValue,
+                            unit: metricType.unit
+                        )
+                        points.append(point)
                     }
                 }
             }

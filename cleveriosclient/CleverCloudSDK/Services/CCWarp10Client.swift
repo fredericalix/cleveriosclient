@@ -55,9 +55,7 @@ public class CCWarp10Client: ObservableObject {
                 let expiryDate = Date().addingTimeInterval(4.5 * 24 * 60 * 60)
                 self.tokenCache[organizationId] = (token: cleanToken, expiry: expiryDate)
                 
-                print("✅ [CCWarp10Client] Successfully generated and cached new Warp10 token for org: \(organizationId)")
-                print("🎫 [CCWarp10Client] GENERATED TOKEN: \(cleanToken)")
-                print("✅ [CCWarp10Client] Token will expire on: \(expiryDate)")
+                print("✅ [CCWarp10Client] Cached new Warp10 token for org: \(organizationId) (\(cleanToken.prefix(8))...[\(cleanToken.count) chars])")
                 return cleanToken
             }
             .handleEvents(
@@ -68,16 +66,6 @@ public class CCWarp10Client: ObservableObject {
                 }
             )
             .eraseToAnyPublisher()
-        
-        // 🧪 FALLBACK: Hardcoded token for emergency fallback only
-        /*
-        let testToken = "7dkN3kTWI3C8kuCfwhw9QTHpHcb.wz2cRqDINJ_c1j4KxNtjWfKyda2vQcBrshIZzvdSJq8E2J311k_.gj_G3W9nvVlzG7Ieja1NttpUZQDeUc_uKgfn8Fy1x7fjjhxHUqUr5QU5Ti9Q1xVCFh6JA2ZAxTcjrOQeWiik3npHXUuAjn1jCxrPQNRNleM1j8LMQKUVsj8.6DZGioHS_9AZ7GBJIQkhygWBodAohHbFproc8IBMyLVqaQOfKgLg9QQ8z_6xHZyUKjIcvSVh8FHgTxUfVmfRk8Y3cJAPsZDnxCyHMH64Zw9aMRs7IIeGTTkDo5__cImf9H17a8z9X2Ttbie8ftarXQGYyYtP6fVArYE8trL6mlNTKwOHGoD6o2Cz"
-        
-        print("🧪 [CCWarp10Client] Using emergency fallback token for org: \(organizationId)")
-        return Just(testToken)
-            .setFailureType(to: CCError.self)
-            .eraseToAnyPublisher()
-        */
     }
     
     // MARK: - WarpScript Execution
@@ -87,8 +75,7 @@ public class CCWarp10Client: ObservableObject {
     /// - Returns: Publisher with raw Warp10 response data
     public func executeWarpScript(_ script: String) -> AnyPublisher<Data, CCError> {
         
-        print("📝 [CCWarp10Client] Executing WarpScript:")
-        print("📝 [CCWarp10Client] \(script)")
+        print("📝 [CCWarp10Client] Executing WarpScript (\(script.count) chars)")
         
         let url = URL(string: "\(warp10Endpoint)/exec")!
         var request = URLRequest(url: url)
@@ -104,9 +91,6 @@ public class CCWarp10Client: ObservableObject {
             .handleEvents(
                 receiveOutput: { data in
                     print("✅ [CCWarp10Client] WarpScript executed successfully, received \(data.count) bytes")
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        print("✅ [CCWarp10Client] Response: \(responseString)")
-                    }
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {

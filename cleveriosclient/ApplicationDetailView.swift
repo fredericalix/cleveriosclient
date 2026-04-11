@@ -91,6 +91,8 @@ struct ApplicationDetailView: View {
     // MARK: - Metrics State
     @State private var selectedMetricsPeriod = "PT1H"
     @State private var isLoadingMetrics = false
+    @State private var pendingMetricsLoads = 0
+    @State private var metricsError: String?
     @State private var cpuMetricsData: [CCApplicationMetricPoint] = []
     @State private var memoryMetricsData: [CCApplicationMetricPoint] = []
     @State private var networkInMetricsData: [CCApplicationMetricPoint] = []
@@ -870,32 +872,46 @@ struct ApplicationDetailView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .frame(width: 200)
             }
-            
+
+            if let error = metricsError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
             // CPU Usage Graph
             MetricsGraphView(
                 title: "CPU Usage",
                 dataPoints: cpuMetricsData,
                 metricType: .cpuUsage,
                 isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod)
+                period: formatPeriodDisplay(selectedMetricsPeriod),
+                rawPeriod: selectedMetricsPeriod
             )
-            
+
             // Memory Usage Graph
             MetricsGraphView(
                 title: "Memory Usage",
                 dataPoints: memoryMetricsData,
                 metricType: .memoryUsage,
                 isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod)
+                period: formatPeriodDisplay(selectedMetricsPeriod),
+                rawPeriod: selectedMetricsPeriod
             )
-            
+
             // Network I/O Graphs in vertical layout
             MetricsGraphView(
                 title: "Network In",
                 dataPoints: networkInMetricsData,
                 metricType: .networkIn,
                 isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod)
+                period: formatPeriodDisplay(selectedMetricsPeriod),
+                rawPeriod: selectedMetricsPeriod
             )
 
             MetricsGraphView(
@@ -903,15 +919,19 @@ struct ApplicationDetailView: View {
                 dataPoints: networkOutMetricsData,
                 metricType: .networkOut,
                 isLoading: isLoadingMetrics,
-                period: formatPeriodDisplay(selectedMetricsPeriod)
+                period: formatPeriodDisplay(selectedMetricsPeriod),
+                rawPeriod: selectedMetricsPeriod
             )
         }
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .onChange(of: selectedMetricsPeriod) { _, _ in
+            loadMetricsData()
+        }
     }
-    
+
     private var costBillingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Cost & Billing")
@@ -2431,41 +2451,41 @@ struct ApplicationDetailView: View {
     /// Load metrics data for all metric types
     private func loadMetricsData() {
         guard let organizationId = organizationId else { return }
-        
-        isLoadingMetrics = true
-        
-        // Load metrics for all types
+
+        metricsError = nil
         let metrics: [MetricType] = [.cpuUsage, .memoryUsage, .networkIn, .networkOut]
-        
+        pendingMetricsLoads = metrics.count
+        isLoadingMetrics = true
+
         for metric in metrics {
             loadMetricsForType(metric, organizationId: organizationId)
         }
     }
-    
+
     /// Load metrics for a specific type
     private func loadMetricsForType(_ metricType: MetricType, organizationId: String) {
         guard let metricsService = metricsService else { return }
-        
+
         metricsService.getApplicationTimeSeries(
             applicationId: application.id,
             organizationId: organizationId,
             metric: metricType,
             interval: intervalForPeriod(selectedMetricsPeriod),
-            span: selectedMetricsPeriod
+            span: selectedMetricsPeriod,
+            totalMemoryMB: Double(application.instance.minFlavor.mem)
         )
         .receive(on: DispatchQueue.main)
         .sink(
             receiveCompletion: { completion in
                 if case .failure(let error) = completion {
-                    print("Failed to load \(metricType) metrics: \(error)")
+                    self.metricsError = "Failed to load \(metricType.displayName): \(error.localizedDescription)"
                 }
-                // Only stop loading when all metrics are done
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.pendingMetricsLoads -= 1
+                if self.pendingMetricsLoads <= 0 {
                     self.isLoadingMetrics = false
                 }
             },
             receiveValue: { dataPoints in
-                // Update the appropriate data array
                 switch metricType {
                 case .cpuUsage:
                     self.cpuMetricsData = dataPoints

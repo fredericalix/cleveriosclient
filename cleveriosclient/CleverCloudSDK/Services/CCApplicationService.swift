@@ -5,8 +5,13 @@ import Combine
 public class CCApplicationService: ObservableObject {
     
     // MARK: - Properties
-    
+
     private let httpClient: CCHTTPClient
+
+    /// JavaScript encodeURIComponent-compatible character set for domain encoding
+    private static let jsEncodeURIComponentAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+    )
     
     // MARK: - Initialization
     
@@ -361,8 +366,7 @@ public class CCApplicationService: ObservableObject {
     ///   - organizationId: The organization ID
     ///   - domain: Domain name to add
     public func addDomain(applicationId: String, organizationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
-        // Encode domain name like clever-tools does
-        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
+        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: Self.jsEncodeURIComponentAllowed) else {
             return Fail(error: CCError.invalidParameters("Invalid domain name"))
                 .eraseToAnyPublisher()
         }
@@ -375,15 +379,10 @@ public class CCApplicationService: ObservableObject {
     ///   - organizationId: The organization ID
     ///   - domain: Domain name to remove
     public func removeDomain(applicationId: String, organizationId: String, domain: String) -> AnyPublisher<EmptyResponse, CCError> {
-        // CRITICAL: We MUST encode the domain EXACTLY like clever-tools does with encodeURIComponent
-        // JavaScript encodeURIComponent encodes everything EXCEPT: A-Z a-z 0-9 - _ . ! ~ * ' ( )
-        // This means dots (.) should NOT be encoded in encodeURIComponent
-        let jsEncodeURIComponentAllowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
-        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: jsEncodeURIComponentAllowed) else {
+        guard let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: Self.jsEncodeURIComponentAllowed) else {
             return Fail(error: CCError.invalidParameters("Failed to encode domain name"))
                 .eraseToAnyPublisher()
         }
-
         return httpClient.delete("/organisations/\(organizationId)/applications/\(applicationId)/vhosts/\(encodedDomain)", apiVersion: .v2)
     }
 

@@ -4,114 +4,105 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a native iOS application for managing Clever Cloud applications and add-ons with OAuth 1.0a authentication. The app provides a modern SwiftUI interface for managing applications, organizations, add-ons, network groups, and environment variables.
+Native iOS application for managing Clever Cloud infrastructure (applications, add-ons, organizations, network groups, environment variables, deployments, logs, metrics). Uses OAuth 1.0a authentication against the Clever Cloud API. Built with SwiftUI targeting iOS 17+, Swift 6.0.
 
 ## Build and Development Commands
 
-### Xcode Operations
 ```bash
-# Open project in Xcode
-open cleveriosclient.xcodeproj
-
 # Build from command line
 xcodebuild -project cleveriosclient.xcodeproj -scheme cleveriosclient build
 
-# Clean build cache (use when encountering JSON decoding errors after model changes)
-xcodebuild clean -project cleveriosclient.xcodeproj
-rm -rf DerivedData/
-```
-
-### Testing
-```bash
 # Run unit tests
 xcodebuild test -scheme cleveriosclient
 
 # Run UI tests
 xcodebuild test -scheme cleveriosclientUITests
+
+# Clean build cache (required when JSON decoding errors appear after model changes)
+xcodebuild clean -project cleveriosclient.xcodeproj && rm -rf DerivedData/
+
+# Open in Xcode
+open cleveriosclient.xcodeproj
 ```
 
 ## Architecture
 
-### Project Structure
-```
-cleveriosclient/
-├── CleverCloudSDK/         # Core SDK implementation
-│   ├── Core/              # OAuth, HTTP client, configuration, error handling
-│   ├── Models/            # Data models (all Codable for JSON serialization)
-│   └── Services/          # API service implementations per domain
-├── Views/                 # SwiftUI view components
-├── Logger/               # Remote logging system for TestFlight debugging
-└── Assets.xcassets/      # App icons, colors, branding assets
-```
+### App Entry Point and Auth Flow
 
-### Key Architectural Components
+`test0App.swift` is the `@main` entry point. It creates `AppRootView`, which holds an `AppCoordinator` as `@State`. The coordinator:
+- Loads OAuth tokens from Keychain on init via `CCKeychainManager`
+- Routes to `LoginView` or `ContentView` based on `isAuthenticated`
+- Polls authentication state every 2 seconds via a timer
+- Is injected into the SwiftUI environment so all views can access it
 
-**CleverCloudSDK**: The core SDK (`cleveriosclient/CleverCloudSDK/CleverCloudSDK.swift:5`) provides:
-- OAuth 1.0a authentication with official Clever Cloud credentials
-- Service layer for all API operations (applications, organizations, add-ons, network groups, deployments, environment)
-- ObservableObject pattern for SwiftUI integration
-- Error handling with CCError types
-- Combine publishers for async operations
+The SDK is accessed through `coordinator.cleverCloudSDK` (lazy singleton). Consumer credentials are hardcoded in `AppCoordinator.init()` (from clever-tools).
 
-**AppCoordinator**: Main app coordinator (`cleveriosclient/AppCoordinator.swift:9`) manages:
-- Global authentication state
-- OAuth token lifecycle with keychain storage
-- SDK initialization and configuration
-- Root view routing based on auth state
-- Timer-based auth state monitoring (2-second intervals)
+### SDK Layer (`CleverCloudSDK/`)
 
-**Remote Logging**: TestFlight debugging system (`cleveriosclient/Logger/RemoteLogger.swift`) with:
-- Centralized remote logging endpoint (https://log-ios.fredalix.com)
-- Device info, session tracking, offline buffering
-- Automatic flushing on app backgrounding
-- Different log levels (DEBUG, INFO, WARN, ERROR) with contextual metadata
+`CleverCloudSDK` is an `ObservableObject` that owns all service objects. Each service takes `CCHTTPClient` as a dependency.
 
-### OAuth Configuration
-- **Consumer Key**: `T5nFjKeHH4AIlEveuGhB5S3xg8T19e` (from clever-tools)
-- **Consumer Secret**: `MgVMqTr6fWlf2M0tkC2MXOnhfqBWDT` (configured in AppCoordinator.swift:63)
-- Authentication flow handled by CCOAuthService
-- Tokens stored securely in iOS Keychain via CCKeychainManager
+**Core** (`Core/`):
+- `CCHTTPClient` - All HTTP requests with OAuth 1.0a signing. Has a critical trailing-slash fix for URL normalization that affects OAuth signature matching. Supports both typed JSON decoding and raw data/string responses.
+- `CCOAuthSigner` - OAuth 1.0a signature generation (HMAC-SHA512 via CryptoKit)
+- `CCConfiguration` - Holds OAuth tokens (mutable via `updateTokens`/`clearTokens`), API base URLs
+- `CCKeychainManager` - Keychain read/write for persisting OAuth credentials
+- `CCError` - Typed error enum with `isAuthenticationError` and `isRetryable` helpers
 
-### Event System
-Hybrid approach for real-time updates:
-- **Primary**: WebSocket events (99% complete, minor "Error 2001" issue after handshake)
-- **Fallback**: Intelligent polling every 15 seconds when WebSocket unavailable
-- Handled by CCEventsService
+**Services** (`Services/`): Each service maps to a Clever Cloud API domain:
+- `CCApplicationService` - CRUD, instances, domains (vhosts), deployments, logs, scaling
+- `CCOrganizationService` - Organizations and user profile
+- `CCAddonService` - Add-on CRUD, providers, plans
+- `CCDeploymentService` - Deployment history, restart, redeploy
+- `CCEnvironmentService` - Environment variables, app config, domains
+- `CCNetworkGroupService` - Network groups, members, peers, WireGuard configs
+- `CCEventsService` - Polling-based status updates (WebSocket removed, polling every 15s)
+- `CCScalabilityService` - Instance/flavor scaling configuration
+- `CCApplicationMetricsService` - Application metrics via Warp10
+- `CCWarp10Client` - Direct Warp10 time-series queries (tokens cached for 5 days)
+- `CCOAuthService` - OAuth 1.0a flow (request token, authorization, access token)
 
-### Data Models
-All models in `CleverCloudSDK/Models/` are Codable and follow the CC prefix convention:
-- CCApplication, CCOrganization, CCAddon, CCNetworkGroup, CCDeployment
-- CCEnvironment for variables and domains
-- CCError for standardized error handling
-- Request/response models for API operations
+**Models** (`Models/`): All `Codable` structs with `CC` prefix (e.g., `CCApplication`, `CCOrganization`, `CCAddon`, `CCDeployment`, `CCNetworkGroup`, `CCEnvironment`, `CCScalability`, `CCMonitoring`, `CCLogs`).
 
-### SwiftUI Integration
-- Uses @Observable pattern for iOS 17+
-- Environment object injection for SDK access
-- Published properties for reactive UI updates
-- Modern SwiftUI architecture with coordinators
+### API Versions
+
+Two Clever Cloud API versions are used:
+- **v2** (`https://api.clever-cloud.com/v2`) - Most endpoints: apps, orgs, addons, env, deployments, logs
+- **v4** (`https://api.clever-cloud.com/v4`) - Network groups, some newer endpoints
+
+Warp10 metrics use a separate endpoint: `https://c2-warp10-clevercloud-customers.services.clever-cloud.com/api/v0`
+
+### Organization Context Pattern
+
+API calls differ based on whether targeting personal space or an organization:
+- Personal space: `/self/applications/...`
+- Organization: `/organisations/{orgId}/applications/...`
+- Organization IDs start with `orga_` prefix; this is used to select the correct endpoint
+
+### View Layer
+
+Most views live directly in `cleveriosclient/` (not in a `Views/` subdirectory):
+- `ContentView` - Main dashboard after login (org picker, app/addon lists)
+- `ApplicationDetailView` - Multi-tab app details (overview, env, config, deployments, domains, advanced)
+- `AddonDetailView` - Add-on details and management
+- `NetworkGroup*View` - Network group management and visualization (feature-flagged off)
+- `LoginView` - OAuth login flow
+- Scalability/metrics views are in `Views/` subdirectory
+
+`CleverCloudViewModel` wraps SDK calls with Combine subscriptions and published state for the main dashboard.
+
+### Async Pattern
+
+All SDK calls return `AnyPublisher<T, CCError>` (Combine). Views subscribe with `.sink()`, store subscriptions in `Set<AnyCancellable>`, and dispatch to main queue with `.receive(on: DispatchQueue.main)`.
+
+### Remote Logging
+
+`RemoteLogger` sends logs to `https://log-ios.fredalix.com` for TestFlight debugging. Configured on app launch, flushes on background. Uses log levels: DEBUG, INFO, WARN, ERROR with metadata dictionaries.
 
 ## Development Guidelines
 
-### Code Style
-- Swift 6.0 with strict concurrency
-- SwiftUI declarative UI patterns
-- Combine for async operations
-- ObservableObject/Observable for state management
-- CC prefix for SDK types, no prefix for app views
-
-### Authentication Testing
-Debug mode enables extensive logging. Access token verification through `CleverCloudSDK.testAuthentication()` method.
-
-### Network Layer
-All API calls use CCHTTPClient with:
-- OAuth 1.0a signature generation
-- Automatic retry logic
-- Request/response logging in debug mode
-- JSON serialization/deserialization with error handling
-
-### Build Cache Issues
-If encountering JSON decoding errors after model modifications, clean build cache before rebuilding.
-
-### TestFlight Debugging
-Remote logging automatically configured on app launch. Logs include device info, user actions, and performance metrics for debugging production issues.
+- **CC prefix** for all SDK types, no prefix for app-level views
+- **@Observable** (iOS 17+ macro) for `AppCoordinator`; **ObservableObject** (Combine) for SDK classes
+- **Combine** for all async operations (not async/await)
+- Clean build cache when modifying model structs to avoid stale JSON decoding
+- Network Groups feature is currently disabled via `isNetworkGroupsEnabled = false` flag in ContentView
+- Domain encoding must match JavaScript's `encodeURIComponent` exactly for OAuth signature compatibility
