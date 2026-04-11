@@ -234,9 +234,24 @@ public class CCApplicationService: ObservableObject {
     /// Get available flavors for applications
     /// - Returns: Publisher with array of available instance flavors
     public func getAvailableFlavors() -> AnyPublisher<[CCFlavor], CCError> {
-        // Since the /products/instances endpoint doesn't exist (returns 404),
-        // we provide the standard Clever Cloud flavors based on actual instances we see in the API
+        // Clever Cloud flavor specs from /v2/products/instances API
         let availableFlavors = [
+            CCFlavor(
+                name: "pico",
+                mem: 337,
+                cpus: 1,
+                gpus: 0,
+                disk: 0,
+                price: 0.0,
+                available: true,
+                microservice: false,
+                machine_learning: false,
+                nice: 0,
+                price_id: "pico",
+                memory: CCMemoryInfo(unit: "MB", value: 337, formatted: "337 MB"),
+                cpuFactor: 1.0,
+                memFactor: 1.0
+            ),
             CCFlavor(
                 name: "nano",
                 mem: 582,
@@ -271,7 +286,7 @@ public class CCApplicationService: ObservableObject {
             ),
             CCFlavor(
                 name: "S",
-                mem: 2304,
+                mem: 2048,
                 cpus: 2,
                 gpus: 0,
                 disk: 0,
@@ -281,13 +296,13 @@ public class CCApplicationService: ObservableObject {
                 machine_learning: false,
                 nice: 0,
                 price_id: "S",
-                memory: CCMemoryInfo(unit: "MB", value: 2304, formatted: "2304 MB"),
+                memory: CCMemoryInfo(unit: "MB", value: 2048, formatted: "2 GB"),
                 cpuFactor: 2.0,
                 memFactor: 2.0
             ),
             CCFlavor(
                 name: "M",
-                mem: 4608,
+                mem: 4096,
                 cpus: 4,
                 gpus: 0,
                 disk: 0,
@@ -297,14 +312,14 @@ public class CCApplicationService: ObservableObject {
                 machine_learning: false,
                 nice: 0,
                 price_id: "M",
-                memory: CCMemoryInfo(unit: "MB", value: 4608, formatted: "4608 MB"),
+                memory: CCMemoryInfo(unit: "MB", value: 4096, formatted: "4 GB"),
                 cpuFactor: 4.0,
                 memFactor: 4.0
             ),
             CCFlavor(
                 name: "L",
-                mem: 9216,
-                cpus: 8,
+                mem: 8192,
+                cpus: 6,
                 gpus: 0,
                 disk: 0,
                 price: 0.1777777778,
@@ -313,14 +328,14 @@ public class CCApplicationService: ObservableObject {
                 machine_learning: false,
                 nice: 0,
                 price_id: "L",
-                memory: CCMemoryInfo(unit: "MB", value: 9216, formatted: "9216 MB"),
-                cpuFactor: 8.0,
-                memFactor: 8.0
+                memory: CCMemoryInfo(unit: "MB", value: 8192, formatted: "8 GB"),
+                cpuFactor: 6.0,
+                memFactor: 6.0
             ),
             CCFlavor(
                 name: "XL",
-                mem: 18432,
-                cpus: 16,
+                mem: 16384,
+                cpus: 8,
                 gpus: 0,
                 disk: 0,
                 price: 0.3555555556,
@@ -329,13 +344,43 @@ public class CCApplicationService: ObservableObject {
                 machine_learning: false,
                 nice: 0,
                 price_id: "XL",
-                memory: CCMemoryInfo(unit: "MB", value: 18432, formatted: "18432 MB"),
+                memory: CCMemoryInfo(unit: "MB", value: 16384, formatted: "16 GB"),
+                cpuFactor: 8.0,
+                memFactor: 8.0
+            ),
+            CCFlavor(
+                name: "2XL",
+                mem: 24576,
+                cpus: 12,
+                gpus: 0,
+                disk: 0,
+                price: 0.5333333334,
+                available: true,
+                microservice: false,
+                machine_learning: false,
+                nice: 0,
+                price_id: "2XL",
+                memory: CCMemoryInfo(unit: "MB", value: 24576, formatted: "24 GB"),
+                cpuFactor: 12.0,
+                memFactor: 12.0
+            ),
+            CCFlavor(
+                name: "3XL",
+                mem: 32768,
+                cpus: 16,
+                gpus: 0,
+                disk: 0,
+                price: 0.7111111112,
+                available: true,
+                microservice: false,
+                machine_learning: false,
+                nice: 0,
+                price_id: "3XL",
+                memory: CCMemoryInfo(unit: "MB", value: 32768, formatted: "32 GB"),
                 cpuFactor: 16.0,
                 memFactor: 16.0
             )
         ]
-        
-        print("📋 Available flavors loaded: \(availableFlavors.map { $0.name }.joined(separator: ", "))")
         
         return Just(availableFlavors)
             .setFailureType(to: CCError.self)
@@ -461,78 +506,100 @@ public class CCApplicationService: ObservableObject {
         limit: Int = 100,
         order: String = "desc"
     ) -> AnyPublisher<[CCLogEntry], CCError> {
-        // Use the same logs endpoint as add-ons
-        let endpoint = "/logs/\(applicationId)?limit=\(limit)&order=\(order)"
-        
-        print("📝 [CCApplicationService] Getting logs from endpoint: \(endpoint)")
-        print("📝 [CCApplicationService] Application ID: \(applicationId)")
-        print("📝 [CCApplicationService] Using v2 logs endpoint")
-        
-        // Decode as array of ElasticsearchLogEntry first, then map to CCLogEntry
-        return httpClient.get(endpoint, apiVersion: .v2)
-            .handleEvents(
-                receiveOutput: { (entries: [ElasticsearchLogEntry]) in
-                    print("📝 [CCApplicationService] Received \(entries.count) Elasticsearch log entries")
-                },
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        print("❌ [CCApplicationService] Failed to decode Elasticsearch logs: \(error)")
-                    }
-                }
-            )
-            .tryMap { (entries: [ElasticsearchLogEntry]) -> [CCLogEntry] in
-                // Convert Elasticsearch entries to CCLogEntry
-                return entries.compactMap { elasticEntry in
-                    let source = elasticEntry.source
-                    
-                    // Parse timestamp
-                    let timestamp: Date
-                    if let date = ISO8601DateFormatter().date(from: source.timestamp) {
-                        timestamp = date
-                    } else {
-                        timestamp = Date()
-                    }
-                    
-                    // Determine log level from message or metadata
-                    let level: CCLogLevel
-                    if let severity = source.syslogSeverity {
-                        switch severity.lowercased() {
-                        case "debug": level = .debug
-                        case "info", "informational": level = .info
-                        case "warning", "warn": level = .warning
-                        case "error", "err": level = .error
-                        default: level = .info
-                        }
-                    } else {
-                        // Try to infer from message
-                        let lowercasedMessage = source.message.lowercased()
-                        if lowercasedMessage.contains("error") || lowercasedMessage.contains("fail") {
-                            level = .error
-                        } else if lowercasedMessage.contains("warn") {
-                            level = .warning
-                        } else if lowercasedMessage.contains("debug") {
-                            level = .debug
-                        } else {
-                            level = .info
-                        }
-                    }
-                    
-                    return CCLogEntry(
-                        timestamp: timestamp,
-                        message: source.message,
-                        level: level,
-                        source: source.syslogProgram ?? source.type,
-                        instanceId: source.sourceHost
-                    )
-                }
-            }
-            .mapError { error -> CCError in
-                if let ccError = error as? CCError {
-                    return ccError
-                }
-                return CCError.parsingError(error)
+        // Use v4 SSE logs endpoint (v2 endpoint returns empty)
+        guard let orgId = organizationId else {
+            // For personal space, use /self path
+            let endpoint = "/logs/self/applications/\(applicationId)/logs?limit=\(limit)"
+            return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
+        }
+
+        let endpoint = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs?limit=\(limit)"
+        return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
+    }
+
+    /// Fetch logs from SSE endpoint and parse into CCLogEntry array
+    private func fetchSSELogs(endpoint: String, apiVersion: APIVersion) -> AnyPublisher<[CCLogEntry], CCError> {
+        return httpClient.getRawString(endpoint, apiVersion: apiVersion)
+            .map { sseText -> [CCLogEntry] in
+                self.parseSSELogEvents(sseText)
             }
             .eraseToAnyPublisher()
+    }
+
+    /// Parse SSE text into log entries
+    /// SSE format: "data:{json}\nevent:APPLICATION_LOG\nid:...\n\n"
+    private func parseSSELogEvents(_ sseText: String) -> [CCLogEntry] {
+        var entries: [CCLogEntry] = []
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Split by double newline (SSE event boundary)
+        let events = sseText.components(separatedBy: "\n\n")
+
+        for event in events {
+            let lines = event.components(separatedBy: "\n")
+
+            // Find the data line
+            var dataLine: String?
+            var eventType: String?
+
+            for line in lines {
+                if line.hasPrefix("data:") {
+                    dataLine = String(line.dropFirst(5))
+                } else if line.hasPrefix("event:") {
+                    eventType = String(line.dropFirst(6))
+                }
+            }
+
+            // Only parse APPLICATION_LOG events with data
+            guard let jsonString = dataLine, !jsonString.isEmpty,
+                  eventType == "APPLICATION_LOG" else {
+                continue
+            }
+
+            guard let jsonData = jsonString.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let message = json["message"] as? String else {
+                continue
+            }
+
+            // Parse date
+            let timestamp: Date
+            if let dateStr = json["date"] as? String {
+                timestamp = isoFormatter.date(from: dateStr)
+                    ?? ISO8601DateFormatter().date(from: dateStr)
+                    ?? Date()
+            } else {
+                timestamp = Date()
+            }
+
+            // Parse severity
+            let level: CCLogLevel
+            if let severity = json["severity"] as? String {
+                switch severity.lowercased() {
+                case "debug": level = .debug
+                case "info", "informational": level = .info
+                case "warning", "warn": level = .warning
+                case "error", "err", "critical", "alert", "emergency": level = .error
+                default: level = .info
+                }
+            } else {
+                level = .info
+            }
+
+            let entry = CCLogEntry(
+                timestamp: timestamp,
+                message: message,
+                level: level,
+                source: json["service"] as? String,
+                instanceId: json["instanceId"] as? String
+            )
+            entries.append(entry)
+        }
+
+        // Sort newest first
+        entries.sort { $0.timestamp > $1.timestamp }
+        return entries
     }
 }
 

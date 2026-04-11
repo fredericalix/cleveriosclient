@@ -39,6 +39,7 @@ struct ContentView: View {
     
     @State private var cancellables = Set<AnyCancellable>()
     @State private var refreshTimer: Timer?
+    @State private var dataRefreshTimer: Timer?
     
     // Simple application status tracking
     @State private var applicationStatuses: [String: String] = [:]
@@ -2238,11 +2239,23 @@ struct ContentView: View {
                 refreshApplicationStatuses()
             }
         }
+
+        // Auto-refresh apps and addons list every 10 seconds
+        dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+            Task { @MainActor in
+                if selectedOrganization != nil {
+                    testGetApplications()
+                    testGetAddons()
+                }
+            }
+        }
     }
-    
+
     private func stopIntelligentPolling() {
         pollingTimer?.invalidate()
         pollingTimer = nil
+        dataRefreshTimer?.invalidate()
+        dataRefreshTimer = nil
         print("⏹️ Stopped intelligent polling")
         writeToDebugLog("⏹️ Stopped intelligent polling")
     }
