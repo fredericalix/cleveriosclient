@@ -334,11 +334,18 @@ public class CCApplicationMetricsService: ObservableObject {
 
                 print("📊 [CCApplicationMetricsService] Processing GTS '\(className)' with \(values.count) data points")
 
+                // Sort values by timestamp ascending (Warp10 may return descending)
+                let sortedValues = values.sorted { a, b in
+                    let tsA = (a[0] as? Double) ?? 0
+                    let tsB = (b[0] as? Double) ?? 0
+                    return tsA < tsB
+                }
+
                 // Parse each value: [timestamp, latitude, longitude, elevation, value]
                 var previousTimestamp: Double?
                 var previousValue: Double?
 
-                for valueArray in values {
+                for valueArray in sortedValues {
                     // Warp10 format: [timestamp, lat, lon, elev, value] or just [timestamp, value]
                     let timestamp: Double
                     let value: Double
@@ -365,23 +372,23 @@ public class CCApplicationMetricsService: ObservableObject {
 
                     // For network metrics, calculate rate (bytes/sec) from cumulative values
                     if let prevTs = previousTimestamp, let prevVal = previousValue {
-                        let timeDiffSeconds = (timestamp - prevTs) / 1_000_000 // Convert microseconds to seconds
+                        let timeDiffSeconds = (timestamp - prevTs) / 1_000_000
                         let valueDiff = value - prevVal
 
-                        // Calculate bytes per second (rate)
-                        let rate = timeDiffSeconds > 0 ? valueDiff / timeDiffSeconds : 0
+                        // Skip counter resets (negative diff = new instance started)
+                        // and same-timestamp duplicates
+                        if valueDiff >= 0 && timeDiffSeconds > 0 {
+                            let rate = valueDiff / timeDiffSeconds
+                            let date = Date(timeIntervalSince1970: timestamp / 1_000_000)
 
-                        // Convert microseconds to Date
-                        let date = Date(timeIntervalSince1970: timestamp / 1_000_000)
-
-                        let point = CCApplicationMetricPoint(
-                            timestamp: date,
-                            value: max(0, rate), // Ensure non-negative rate
-                            metricType: metricType.rawValue,
-                            unit: metricType.unit
-                        )
-
-                        points.append(point)
+                            let point = CCApplicationMetricPoint(
+                                timestamp: date,
+                                value: rate,
+                                metricType: metricType.rawValue,
+                                unit: metricType.unit
+                            )
+                            points.append(point)
+                        }
                     }
 
                     // Store current values for next iteration
