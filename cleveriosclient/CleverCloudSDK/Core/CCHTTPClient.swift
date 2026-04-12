@@ -276,23 +276,6 @@ public final class CCHTTPClient: ObservableObject {
                         RemoteLogger.shared.debug("📦 Raw response: \(responseString.prefix(500))")
                     }
 
-                    // EMERGENCY DEBUG: Log ALL HTTP responses to find the DELETE
-                    if let url = httpResponse.url?.absoluteString {
-                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] URL: \(url)")
-                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] Status: \(httpResponse.statusCode)")
-
-                        // Special focus on vhosts operations
-                        if url.contains("vhosts") {
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] FOUND VHOSTS URL: \(url)")
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Status: \(httpResponse.statusCode)")
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Headers: \(httpResponse.allHeaderFields)")
-                            if let responseString = String(data: data, encoding: .utf8) {
-                                RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: '\(responseString)'")
-                            } else {
-                                RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: (binary data, \(data.count) bytes)")
-                            }
-                        }
-                    }
                 }
                 
                 switch httpResponse.statusCode {
@@ -556,20 +539,6 @@ public final class CCHTTPClient: ObservableObject {
                         "preview": String(rawResponse.prefix(500))
                     ])
 
-                    // EMERGENCY DEBUG: Log ALL HTTP responses to find the DELETE
-                    if let url = httpResponse.url?.absoluteString {
-                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] URL: \(url)")
-                        RemoteLogger.shared.debug("🚨 [ALL HTTP DEBUG] Status: \(httpResponse.statusCode)")
-
-                        // Special focus on vhosts operations
-                        if url.contains("vhosts") {
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] FOUND VHOSTS URL: \(url)")
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Status: \(httpResponse.statusCode)")
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Headers: \(httpResponse.allHeaderFields)")
-                            RemoteLogger.shared.debug("🗑️ [VHOSTS DEBUG] Response body: '\(rawResponse)'")
-                        }
-                    }
-                    
                     do {
                         let decoder = JSONDecoder()
                         decoder.dateDecodingStrategy = .iso8601

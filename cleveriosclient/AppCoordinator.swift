@@ -61,7 +61,13 @@ final class AppCoordinator {
         _configuration = CCConfiguration(
             consumerKey: "T5nFjKeHH4AIlEveuGhB5S3xg8T19e",      // Credentials officielles
             consumerSecret: "MgVMqTr6fWlf2M0tkC2MXOnhfqBWDT",    // de clever-tools
-            enableDebugLogging: true
+            enableDebugLogging: {
+                #if DEBUG
+                return true
+                #else
+                return false
+                #endif
+            }()
         )
         
         RemoteLogger.shared.debug("Configuration initialized", metadata: [

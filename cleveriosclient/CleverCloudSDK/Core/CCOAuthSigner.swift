@@ -39,11 +39,6 @@ public final class CCOAuthSigner: @unchecked Sendable {
             throw CCError.invalidURL
         }
 
-        // CRITICAL DEBUG: Log the actual URL being used for OAuth signature
-        if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🔐 [OAuth] URL for signature: \(url.absoluteString)")
-            RemoteLogger.shared.debug("🔐 [OAuth] URL path: \(url.path)")
-        }
         
         // Extract query parameters from URL
         var queryParams: [String: String] = [:]
@@ -167,13 +162,7 @@ public final class CCOAuthSigner: @unchecked Sendable {
             parameterString.oauthPercentEncoded()
         ].joined(separator: "&")
         
-        if configuration.enableDebugLogging {
-            print("🔐 [OAuth] Signature Base String: \(baseString)")
-            print("🔐 [OAuth] HTTP Method: \(httpMethod.uppercased())")
-            print("🔐 [OAuth] Base URL: \(baseURL)")
-            print("🔐 [OAuth] Parameter String: \(parameterString)")
-            print("🔐 [OAuth] Sorted Parameters: \(sortedParams)")
-        }
+        // OAuth signature details available via enableDebugLogging if needed
         
         return baseString
     }
@@ -201,9 +190,6 @@ public final class CCOAuthSigner: @unchecked Sendable {
         
         let signatureString = Data(signature).base64EncodedString()
         
-        if configuration.enableDebugLogging {
-            print("🔐 [OAuth] Generated signature: \(signatureString.prefix(20))...")
-        }
         
         return signatureString
     }
