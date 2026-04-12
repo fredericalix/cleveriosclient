@@ -504,17 +504,19 @@ public class CCApplicationService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil,
         limit: Int = 100,
-        order: String = "desc"
+        order: String = "desc",
+        since: Date? = nil
     ) -> AnyPublisher<[CCLogEntry], CCError> {
-        // v4 SSE logs endpoint requires &since= to return historical logs
-        let since = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-24 * 3600))
+        // Use provided since date, or default to 24h ago for initial load
+        let sinceDate = since ?? Date().addingTimeInterval(-24 * 3600)
+        let sinceStr = ISO8601DateFormatter().string(from: sinceDate)
 
         guard let orgId = organizationId else {
-            let endpoint = "/logs/self/applications/\(applicationId)/logs?limit=\(limit)&since=\(since)"
+            let endpoint = "/logs/self/applications/\(applicationId)/logs?limit=\(limit)&since=\(sinceStr)"
             return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
         }
 
-        let endpoint = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs?limit=\(limit)&since=\(since)"
+        let endpoint = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs?limit=\(limit)&since=\(sinceStr)"
         return fetchSSELogs(endpoint: endpoint, apiVersion: .v4)
     }
 

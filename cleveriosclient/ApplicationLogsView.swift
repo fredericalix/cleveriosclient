@@ -259,13 +259,17 @@ struct ApplicationLogsView: View {
     // MARK: - Helper Methods
     
     private func loadLogs() {
-        isLoadingLogs = true
+        isLoadingLogs = logs.isEmpty
         logsError = nil
-        
+
+        // On refresh, fetch only logs newer than the latest we have
+        let sinceDate: Date? = logs.max(by: { $0.timestamp < $1.timestamp })?.timestamp
+
         cleverCloudSDK.applications.getApplicationLogs(
             applicationId: application.id,
             organizationId: organizationId,
-            limit: 400
+            limit: 400,
+            since: sinceDate
         )
         .receive(on: DispatchQueue.main)
         .sink(
@@ -277,8 +281,24 @@ struct ApplicationLogsView: View {
                 }
             },
             receiveValue: { newLogs in
-                logs = newLogs
-                print("✅ Loaded \(newLogs.count) application logs")
+                if sinceDate == nil {
+                    // Initial load - replace all
+                    logs = newLogs
+                } else {
+                    // Refresh - append only truly new logs (by timestamp)
+                    let existingTimestamps = Set(logs.map { $0.timestamp })
+                    let uniqueNew = newLogs.filter { !existingTimestamps.contains($0.timestamp) }
+                    if !uniqueNew.isEmpty {
+                        logs.append(contentsOf: uniqueNew)
+                        // Keep only last 400
+                        if logs.count > 400 {
+                            let sorted = logs.sorted { $0.timestamp < $1.timestamp }
+                            logs = Array(sorted.suffix(400))
+                        }
+                    }
+                }
+                let newCount = sinceDate == nil ? newLogs.count : newLogs.filter { !Set(logs.map { $0.timestamp }).contains($0.timestamp) == false }.count
+                print("✅ Loaded \(newLogs.count) application logs (\(logs.count) total)")
             }
         )
         .store(in: &cancellables)
