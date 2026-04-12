@@ -1047,6 +1047,8 @@ struct ApplicationDetailView: View {
         }
     }
 
+    @State private var showingLogsFullScreen = false
+
     private var deploymentsTab: some View {
         VStack(spacing: 0) {
             // Segmented Control
@@ -1062,21 +1064,45 @@ struct ApplicationDetailView: View {
                 // Deployments view
                 deploymentHistoryView
             } else {
-                // Logs view
-                ApplicationLogsView(
-                    application: application,
-                    cleverCloudSDK: cleverCloudSDK,
-                    organizationId: organizationId,
-                    logs: $logs,
-                    isLoadingLogs: $isLoadingLogs,
-                    logsError: $logsError,
-                    searchText: $searchText,
-                    selectedLogLevel: $selectedLogLevel,
-                    isPaused: $isPaused,
-                    autoScroll: $autoScroll,
-                    logsTimer: $logsTimer
-                )
+                // Logs button - opens full screen
+                VStack(spacing: 16) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 50))
+                        .foregroundColor(.blue)
+                    Text("View Application Logs")
+                        .font(.title3)
+                        .fontWeight(.medium)
+                    Text("\(logs.count) logs loaded")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Button(action: { showingLogsFullScreen = true }) {
+                        Label("Open Logs", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .font(.headline)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+        .fullScreenCover(isPresented: $showingLogsFullScreen) {
+            ApplicationLogsView(
+                application: application,
+                cleverCloudSDK: cleverCloudSDK,
+                organizationId: organizationId,
+                logs: $logs,
+                isLoadingLogs: $isLoadingLogs,
+                logsError: $logsError,
+                searchText: $searchText,
+                selectedLogLevel: $selectedLogLevel,
+                isPaused: $isPaused,
+                autoScroll: $autoScroll,
+                logsTimer: $logsTimer
+            )
         }
     }
     

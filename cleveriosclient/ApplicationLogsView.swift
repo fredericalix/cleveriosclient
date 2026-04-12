@@ -5,7 +5,7 @@ struct ApplicationLogsView: View {
     let application: CCApplication
     @ObservedObject var cleverCloudSDK: CleverCloudSDK
     let organizationId: String?
-    
+
     // Bindings from parent
     @Binding var logs: [CCLogEntry]
     @Binding var isLoadingLogs: Bool
@@ -15,29 +15,42 @@ struct ApplicationLogsView: View {
     @Binding var isPaused: Bool
     @Binding var autoScroll: Bool
     @Binding var logsTimer: Timer?
-    
+
+    @Environment(\.dismiss) private var dismiss
     @State private var cancellables = Set<AnyCancellable>()
     @State private var scrollViewProxy: ScrollViewProxy?
-    
-    // Computed filtered logs
+
+    // Computed filtered logs - sorted chronologically (oldest first, newest at bottom)
     private var filteredLogs: [CCLogEntry] {
         logs.filter { log in
-            // Filter by search text
-            let matchesSearch = searchText.isEmpty || 
+            let matchesSearch = searchText.isEmpty ||
                 log.message.localizedCaseInsensitiveContains(searchText)
-            
-            // Filter by log level
             let matchesLevel = selectedLogLevel == nil || log.level == selectedLogLevel
-            
             return matchesSearch && matchesLevel
         }
+        .sorted { $0.timestamp < $1.timestamp }
     }
     
     var body: some View {
         VStack(spacing: 0) {
+            // Close button header
+            HStack {
+                Text(application.name)
+                    .font(.headline)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
             // Toolbar
             logsToolbar
-            
+
             Divider()
             
             // Logs content
@@ -252,7 +265,7 @@ struct ApplicationLogsView: View {
         cleverCloudSDK.applications.getApplicationLogs(
             applicationId: application.id,
             organizationId: organizationId,
-            limit: 1000
+            limit: 400
         )
         .receive(on: DispatchQueue.main)
         .sink(

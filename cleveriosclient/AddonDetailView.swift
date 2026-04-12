@@ -74,8 +74,8 @@ struct AddonDetailView: View {
                     }
                     .tag(0)
                 
-                // Tab 2: Logs
-                logsTab
+                // Tab 2: Logs (opens full screen)
+                logsLauncherTab
                     .tabItem {
                         Image(systemName: "doc.text")
                         Text("Logs")
@@ -371,8 +371,60 @@ struct AddonDetailView: View {
         }
     }
     
-    // MARK: - Tab 2: Logs Implementation
-    
+    // MARK: - Tab 2: Logs Launcher
+
+    @State private var showingAddonLogsFullScreen = false
+
+    private var logsLauncherTab: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 50))
+                .foregroundColor(.blue)
+            Text("View Add-on Logs")
+                .font(.title3)
+                .fontWeight(.medium)
+            Text("\(logs.count) logs loaded")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Button(action: { showingAddonLogsFullScreen = true }) {
+                Label("Open Logs", systemImage: "arrow.up.left.and.arrow.down.right")
+                    .font(.headline)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fullScreenCover(isPresented: $showingAddonLogsFullScreen) {
+            addonLogsFullScreen
+        }
+        .onAppear {
+            startLogsPolling()
+        }
+    }
+
+    private var addonLogsFullScreen: some View {
+        NavigationView {
+            logsTab
+                .navigationTitle(addon.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: { showingAddonLogsFullScreen = false }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+        }
+    }
+
+    // MARK: - Logs Content
+
     private var logsTab: some View {
         VStack(spacing: 0) {
             // Header with controls
@@ -558,11 +610,12 @@ struct AddonDetailView: View {
     
     private var filteredLogs: [CCLogEntry] {
         logs.filter { log in
-            let matchesSearch = searchText.isEmpty || 
+            let matchesSearch = searchText.isEmpty ||
                 log.message.localizedCaseInsensitiveContains(searchText)
             let matchesLevel = selectedLogLevel == nil || log.level == selectedLogLevel
             return matchesSearch && matchesLevel
         }
+        .sorted { $0.timestamp < $1.timestamp }
     }
     
     private func colorForLogLevel(_ level: CCLogLevel) -> Color {
@@ -1005,7 +1058,7 @@ struct AddonDetailView: View {
         cleverCloudSDK.addons.getAddonLogs(
             addonId: addon.id,
             organizationId: organizationId,
-            limit: 100,
+            limit: 400,
             order: "desc"
         )
         .receive(on: DispatchQueue.main)
