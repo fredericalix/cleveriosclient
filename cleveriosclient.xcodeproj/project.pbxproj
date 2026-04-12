@@ -73,6 +73,11 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C63EFF772F8A518E008C0C25 /* Products */ = {
+			isa = PBXGroup;
+			name = Products;
+			sourceTree = "<group>";
+		};
 		C6A4F8AE2E01751500FAEC72 = {
 			isa = PBXGroup;
 			children = (
@@ -200,6 +205,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C6A4F8B82E01751500FAEC72 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = C63EFF772F8A518E008C0C25 /* Products */;
+					ProjectRef = C6E7BE4C2E7F0AE0005918F9 /* cleveriosclient.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				C6A4F8B62E01751500FAEC72 /* cleveriosclient */,
@@ -397,7 +408,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -434,7 +445,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

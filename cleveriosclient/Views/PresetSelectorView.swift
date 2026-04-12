@@ -13,7 +13,7 @@ struct PresetSelectorView: View {
     @State private var presets: [CCScalabilityPreset] = []
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Category Filter
                 categoryFilterSection

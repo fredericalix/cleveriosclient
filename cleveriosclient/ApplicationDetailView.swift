@@ -7,16 +7,8 @@ struct ApplicationDetailView: View {
     var cleverCloudSDK: CleverCloudSDK
     let organizationId: String?
     
-    // MARK: - iPad Detection
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
-    @Environment(\.verticalSizeClass) var verticalSizeClass
     @Environment(\.presentationMode) var presentationMode
-    
-    // Computed property to determine if we're on iPad
-    private var isIpad: Bool {
-        horizontalSizeClass == .regular && verticalSizeClass == .regular
-    }
-    
+
     // MARK: - State
     
     @State private var environmentVariables: [CCEnvironmentVariable] = []
@@ -112,20 +104,9 @@ struct ApplicationDetailView: View {
     }
     
     var body: some View {
-        Group {
-            if isIpad {
-                // iPad: No NavigationView needed (we're inside NavigationSplitView detail)
-                applicationContent
-            } else {
-                // iPhone: Use NavigationView for traditional navigation
-                NavigationView {
-                    applicationContent
-                        .navigationBarHidden(true)
-                }
-                .navigationTitle(application.name)
-                .navigationBarTitleDisplayMode(.large)
-            }
-        }
+        applicationContent
+            .navigationTitle(application.name)
+            .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingAddVariable) {
             addVariableSheet
         }
@@ -1405,7 +1386,7 @@ struct ApplicationDetailView: View {
     // MARK: - Add Variable Sheet
     
     private var addVariableSheet: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 Text("Add Environment Variable")
                     .font(.title2)
@@ -1964,7 +1945,7 @@ struct ApplicationDetailView: View {
     
     /// Instance type picker sheet
     private var instanceTypePickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 16) {
@@ -2827,7 +2808,7 @@ struct FeatureBadge: View {
 // MARK: - Preview
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         ApplicationDetailView(
             application: CCApplication(
                 id: "app_123",
@@ -2893,7 +2874,7 @@ struct FeatureBadge: View {
 
 extension ApplicationDetailView {
     private var addDomainSheet: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 // Instructions
                 VStack(alignment: .leading, spacing: 12) {

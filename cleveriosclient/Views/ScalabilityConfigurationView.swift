@@ -753,7 +753,7 @@ extension ScalingStrategy {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         ScalabilityConfigurationView(
             application: CCApplication.sampleApplication,
             cleverCloudSDK: CleverCloudSDK(configuration: CCConfiguration(apiToken: "preview-token")),

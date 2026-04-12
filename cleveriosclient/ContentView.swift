@@ -48,6 +48,9 @@ struct ContentView: View {
 
     // Event system tracking
     @State private var eventsCancellables = Set<AnyCancellable>()
+
+    // Navigation
+    @State private var navigationPath = NavigationPath()
     
     // MARK: - Properties
     @State private var showingAlert = false
@@ -264,7 +267,7 @@ struct ContentView: View {
     // MARK: - iPhone Layout (unchanged)
     
     private var iPhoneLayout: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 20) {
                     // Main Content Sections
@@ -279,7 +282,7 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal)
-                    
+
                     // Footer spacing
                     Spacer(minLength: 50)
                 }
@@ -288,6 +291,14 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .navigationBarItems(leading: cleverCloudTitleLogo, trailing: logoutButton)
+            .navigationDestination(for: AppDestination.self) { destination in
+                switch destination {
+                case .applicationDetail(let app, let orgId):
+                    ApplicationDetailView(application: app, cleverCloudSDK: cleverCloudSDK, organizationId: orgId)
+                case .addonDetail(let addon, let orgId):
+                    AddonDetailView(addon: addon, organizationId: orgId, cleverCloudSDK: cleverCloudSDK)
+                }
+            }
         }
         .onAppear {
             loadData()
@@ -1462,7 +1473,9 @@ struct ContentView: View {
     }
     
     private func applicationRow(_ app: CCApplication) -> some View {
-        NavigationLink(destination: ApplicationDetailView(application: app, cleverCloudSDK: cleverCloudSDK, organizationId: selectedOrganization?.id)) {
+        Button {
+            navigationPath.append(AppDestination.applicationDetail(app, selectedOrganization?.id))
+        } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "app.badge")
@@ -1519,7 +1532,9 @@ struct ContentView: View {
     }
     
     private func addonRow(_ addon: CCAddon) -> some View {
-        NavigationLink(destination: AddonDetailView(addon: addon, organizationId: selectedOrganization?.id, cleverCloudSDK: cleverCloudSDK)) {
+        Button {
+            navigationPath.append(AppDestination.addonDetail(addon, selectedOrganization?.id))
+        } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "puzzlepiece.extension")
@@ -2241,10 +2256,14 @@ struct ContentView: View {
             }
         }
 
-        // Note: Auto-refresh of apps/addons list disabled to prevent
-        // navigation pop on iPhone (recreating @State arrays invalidates NavigationLinks).
-        // The 15s polling timer handles status updates. Full list refresh happens
-        // when switching organizations or returning to the dashboard.
+        // Auto-refresh apps/addons list every 10s
+        // Safe with NavigationStack path-based navigation (array updates don't pop)
+        dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+            Task { @MainActor in
+                testGetApplications()
+                testGetAddons()
+            }
+        }
     }
 
     private func stopIntelligentPolling() {

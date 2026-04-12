@@ -4,10 +4,14 @@ import Combine
 // MARK: - CCAddon Models
 
 /// Represents a Clever Cloud add-on (database, cache, etc.)
-public struct CCAddon: Codable, Identifiable, Equatable {
-    
+public struct CCAddon: Codable, Identifiable, Equatable, Hashable {
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     // MARK: - Core Properties
-    
+
     /// Unique add-on identifier
     public let id: String
     

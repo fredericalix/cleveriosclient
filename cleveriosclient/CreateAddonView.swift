@@ -34,7 +34,7 @@ struct CreateAddonView: View {
     @State private var cancellables = Set<AnyCancellable>()
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 basicInformationSection
                 providerConfigurationSection
@@ -290,7 +290,7 @@ struct AddonProviderPickerView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(providers.filter { $0.comingSoon != true }) { provider in
                     Button {
@@ -349,7 +349,7 @@ struct AddonPlanPickerView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(plans) { plan in
                     Button {
@@ -435,7 +435,7 @@ struct AddonRegionPickerView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(regions, id: \.self) { region in
                     Button {

@@ -407,7 +407,7 @@ struct AddonDetailView: View {
     }
 
     private var addonLogsFullScreen: some View {
-        NavigationView {
+        NavigationStack {
             logsTab
                 .navigationTitle(addon.name)
                 .navigationBarTitleDisplayMode(.inline)
@@ -1468,7 +1468,7 @@ struct ChartCard: View {
 // MARK: - Preview
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AddonDetailView(
             addon: CCAddon(
                 id: "addon_123",

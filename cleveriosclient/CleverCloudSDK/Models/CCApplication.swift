@@ -1,10 +1,14 @@
 import Foundation
 
 /// Represents a Clever Cloud application
-public struct CCApplication: Codable, Identifiable, Equatable {
-    
+public struct CCApplication: Codable, Identifiable, Equatable, Hashable {
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     // MARK: - Core Properties
-    
+
     /// Unique application identifier
     public let id: String
     
