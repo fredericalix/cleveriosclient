@@ -502,6 +502,11 @@ struct AddonDetailView: View {
                         }
                         .padding()
                     }
+                    .onAppear {
+                        if autoScroll, let lastLog = filteredLogs.last {
+                            proxy.scrollTo(lastLog.id, anchor: .bottom)
+                        }
+                    }
                     .onChange(of: logs.count) { oldCount, newCount in
                         if autoScroll, let lastLog = filteredLogs.last {
                             withAnimation {

@@ -369,26 +369,18 @@ struct ApplicationDetailView: View {
         }
     }
     
-    /// Get instance specifications based on the actual flavor
+    /// Get instance specifications from the API flavor data
     private var instanceSpecs: String {
-        let flavorName = application.instance.minFlavor.name.lowercased()
-        
-        switch flavorName {
-        case "pico": return "0.125 vCPU, 128MB"
-        case "nano": return "0.25 vCPU, 256MB"
-        case "xs": return "0.5 vCPU, 512MB"
-        case "s": return "1 vCPU, 1GB"
-        case "m": return "2 vCPU, 2GB"
-        case "l": return "4 vCPU, 4GB"
-        case "xl": return "8 vCPU, 8GB"
-        case "2xl": return "16 vCPU, 16GB"
-        case "3xl": return "32 vCPU, 32GB"
-        default: 
-            // Fallback to flavor data if available
-            let cpu = application.instance.minFlavor.cpus
-            let memGB = application.instance.minFlavor.mem / 1024
-            return "\(cpu) vCPU, \(memGB)GB"
+        let flavor = application.instance.minFlavor
+        // Use the formatted memory from the API if available, otherwise calculate
+        if let memory = flavor.memory, !memory.formatted.isEmpty {
+            return "\(flavor.cpus) vCPU, \(memory.formatted)"
         }
+        let memMB = flavor.mem
+        if memMB >= 1024 {
+            return "\(flavor.cpus) vCPU, \(memMB / 1024) GB"
+        }
+        return "\(flavor.cpus) vCPU, \(memMB) MB"
     }
     
     /// Display name combining runtime and flavor size
