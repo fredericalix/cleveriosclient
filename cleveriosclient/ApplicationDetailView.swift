@@ -3,8 +3,8 @@ import Combine
 import os.log
 
 struct ApplicationDetailView: View {
-    @State var application: CCApplication // 🎯 CRITICAL FIX: Changed from 'let' to '@State var' so we can update it!
-    @ObservedObject var cleverCloudSDK: CleverCloudSDK
+    @State var application: CCApplication
+    var cleverCloudSDK: CleverCloudSDK
     let organizationId: String?
     
     // MARK: - iPad Detection

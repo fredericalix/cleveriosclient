@@ -48,12 +48,23 @@ struct test0App: App {
 /// Vue racine de l'application
 struct AppRootView: View {
     @State private var coordinator = AppCoordinator()
-    
+    @State private var appState: AppState?
+
     var body: some View {
-        coordinator.rootView()
-            .environment(coordinator)
-            .onAppear {
-                RemoteLogger.shared.debug("AppRootView appeared")
+        Group {
+            if let appState = appState {
+                coordinator.rootView()
+                    .environment(coordinator)
+                    .environment(appState)
+            } else {
+                coordinator.rootView()
+                    .environment(coordinator)
             }
+        }
+        .onAppear {
+            if appState == nil {
+                appState = AppState(cleverCloudSDK: coordinator.cleverCloudSDK)
+            }
+        }
     }
 }

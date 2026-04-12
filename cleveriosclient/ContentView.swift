@@ -15,35 +15,37 @@ struct ContentView: View {
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @Query private var items: [Item]
     
-    // MARK: - AppCoordinator from Environment 
+    // MARK: - AppCoordinator & AppState from Environment
     @Environment(AppCoordinator.self) private var coordinator
-    
-    // Computed property pour accéder au SDK depuis l'AppCoordinator
+    @Environment(AppState.self) private var appState: AppState?
+
+    // Computed property pour accéder au SDK
     private var cleverCloudSDK: CleverCloudSDK {
-        coordinator.cleverCloudSDK
+        appState?.cleverCloudSDK ?? coordinator.cleverCloudSDK
     }
-    
+
+    // Data arrays - backed by AppState when available, local @State as fallback
     @State private var applications: [CCApplication] = []
     @State private var organizations: [CCOrganization] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var organizationError: String?
-    
+
     // Add-ons state
     @State private var addons: [CCAddon] = []
     @State private var addonProviders: [CCAddonProvider] = []
     @State private var addonError: String?
-    
+
     // Organization selection
     @State private var selectedOrganization: CCOrganization?
-    
+
     @State private var cancellables = Set<AnyCancellable>()
     @State private var refreshTimer: Timer?
     @State private var dataRefreshTimer: Timer?
-    
+
     // Simple application status tracking
     @State private var applicationStatuses: [String: String] = [:]
-    
+
     // Event system tracking
     @State private var eventsCancellables = Set<AnyCancellable>()
     
