@@ -21,6 +21,11 @@ struct ApplicationDetailView: View {
     @State private var newVariableName = ""
     @State private var newVariableValue = ""
     @State private var isSecret = false
+
+    // Edit variable
+    @State private var showingEditVariable = false
+    @State private var editingVariable: CCEnvironmentVariable?
+    @State private var editVariableValue = ""
     
     @State private var cancellables = Set<AnyCancellable>()
     
@@ -109,6 +114,9 @@ struct ApplicationDetailView: View {
             .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingAddVariable) {
             addVariableSheet
+        }
+        .sheet(isPresented: $showingEditVariable) {
+            editVariableSheet
         }
     }
     
@@ -1443,8 +1451,69 @@ struct ApplicationDetailView: View {
         .presentationDetents([.medium, .large])
     }
     
+    // MARK: - Edit Variable Sheet
+
+    private var editVariableSheet: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Edit Environment Variable")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    // Variable Name (read-only)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Variable Name")
+                            .font(.headline)
+                        Text(editingVariable?.name ?? "")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Color(.systemGray5))
+                            .cornerRadius(8)
+                    }
+
+                    // Variable Value (editable)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Variable Value")
+                            .font(.headline)
+                        TextField("Value", text: $editVariableValue)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+                .padding()
+
+                Spacer()
+
+                // Action Buttons
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        showingEditVariable = false
+                        editingVariable = nil
+                        editVariableValue = ""
+                    }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.bordered)
+
+                    Button("Save") {
+                        saveEditedVariable()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(editVariableValue.isEmpty)
+                }
+                .padding()
+            }
+            .navigationBarHidden(true)
+        }
+        .presentationDetents([.medium, .large])
+    }
+
     // MARK: - Helper Methods
-    
+
     private func loadEnvironmentVariables() {
         isLoading = true
         errorMessage = nil
@@ -1489,8 +1558,36 @@ struct ApplicationDetailView: View {
     }
     
     private func editVariable(_ variable: CCEnvironmentVariable) {
-        // TODO: Implement edit functionality
         print("Edit variable: \(variable.name)")
+        editingVariable = variable
+        editVariableValue = variable.value
+        showingEditVariable = true
+    }
+
+    private func saveEditedVariable() {
+        guard let variable = editingVariable else { return }
+        let updatedVariable = CCEnvironmentVariable(name: variable.name, value: editVariableValue)
+
+        cleverCloudSDK.applications.setEnvironmentVariable(
+            applicationId: application.id,
+            variable: updatedVariable,
+            organizationId: organizationId
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                if case .failure(let error) = completion {
+                    errorMessage = "Failed to update variable: \(error.localizedDescription)"
+                } else {
+                    showingEditVariable = false
+                    editingVariable = nil
+                    editVariableValue = ""
+                    loadEnvironmentVariables()
+                }
+            },
+            receiveValue: { _ in }
+        )
+        .store(in: &cancellables)
     }
     
     private func deleteVariable(_ variable: CCEnvironmentVariable) {
