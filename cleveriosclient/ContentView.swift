@@ -67,12 +67,6 @@ struct ContentView: View {
     @State private var pollingInterval: TimeInterval = 15.0
     @State private var eventSystemMode: String = "Disconnected"
     
-    // MARK: - Feature Flags
-    private let isNetworkGroupsEnabled = false // TODO: Set to true when Clever Cloud stabilizes Network Groups
-
-    // MARK: - Network Groups State
-    @State private var showingNetworkGroups = false
-
     // MARK: - Creation Views State
     @State private var showingCreateAddon = false
     
@@ -87,12 +81,12 @@ struct ContentView: View {
     @State private var selectedDetailView: DetailViewType = .dashboard
     @State private var selectedApplicationForDetail: CCApplication?
     @State private var selectedAddonForDetail: CCAddon?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     
     enum DetailViewType {
         case dashboard
         case applicationDetail
         case addonDetail
-        // case networkGroups // Disabled - will be enabled when Clever Cloud stabilizes Network Groups
     }
     
     // Computed property to determine if we're on iPad - Using Apple recommended method
@@ -192,15 +186,23 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - iPad Optimized Layout
-    
+    // MARK: - iPad Optimized Layout (3 columns)
+
     private var iPadLayout: some View {
-        NavigationSplitView {
-            // Sidebar content - same as iPhone but optimized
-            sidebarContent
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            organizationSidebar
                 .navigationTitle("Clever Cloud")
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        logoutButton
+                    }
+                }
+        } content: {
+            appsAndAddonsContent
+                .navigationTitle(selectedOrganization?.name ?? "Select organization")
+                .navigationSplitViewColumnWidth(min: 320, ideal: 380)
         } detail: {
-            // Intelligent detail view based on selection
             detailContent
         }
         .onAppear {
@@ -226,12 +228,19 @@ struct ContentView: View {
             if let destroyedAddonId = notification.object as? String {
                 // Remove from addons list
                 addons.removeAll { $0.id == destroyedAddonId }
-                
+
                 // Clear selected detail if it was the destroyed addon
                 if selectedAddonForDetail?.id == destroyedAddonId {
                     selectedDetailView = .dashboard
                     selectedAddonForDetail = nil
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
+            if let org = selectedOrganization {
+                autoRefreshOrganizationData(for: org)
+            } else {
+                loadData()
             }
         }
         .onDisappear {
@@ -241,7 +250,7 @@ struct ContentView: View {
             if let newOrg = newValue {
                 RemoteLogger.shared.info("🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
                 autoRefreshOrganizationData(for: newOrg)
-                
+
                 // On iPad, maintain current selection if possible
                 // Only reset to dashboard if explicitly changing organizations (not data refresh)
                 if oldValue?.id != newValue?.id {
@@ -251,8 +260,6 @@ struct ContentView: View {
                         // Keep application detail view if we have a selected app
                     } else if selectedDetailView == .addonDetail && selectedAddonForDetail != nil {
                         // Keep addon detail view if we have a selected addon
-                    // } else if selectedDetailView == .networkGroups {
-                    //     // Keep network groups view (it will reload for the new organization) - DISABLED
                     } else {
                         // Default to dashboard only if no valid selection
                         selectedDetailView = .dashboard
@@ -275,11 +282,6 @@ struct ContentView: View {
                         organizationsCard
                         applicationsCard
                         addonsCard
-
-                        // Network Groups Card - Disabled until Clever Cloud stabilizes the feature
-                        if isNetworkGroupsEnabled {
-                            networkGroupsCard
-                        }
                     }
                     .padding(.horizontal)
 
@@ -319,6 +321,13 @@ struct ContentView: View {
                 addons.removeAll { $0.id == destroyedAddonId }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
+            if let org = selectedOrganization {
+                autoRefreshOrganizationData(for: org)
+            } else {
+                loadData()
+            }
+        }
         .onDisappear {
             teardownPollingSystem()
         }
@@ -339,69 +348,89 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Sidebar Content (for iPad)
-    
-    private var sidebarContent: some View {
+    // MARK: - Organization Sidebar (Column 1, iPad)
+
+    private var organizationSidebar: some View {
         List {
-            // Organizations Section
+            Section {
+                Picker("Filter", selection: $orgFilterMode) {
+                    ForEach(OrgFilterMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+            }
+
             Section(header: Text("Organizations")) {
                 ForEach(filteredOrganizations) { org in
                     organizationRowForSidebar(org)
                 }
             }
-            
-            // Applications Section
-            if !filteredApplications.isEmpty {
-                Section(header: Text("Applications")) {
-                    ForEach(filteredApplications) { app in
-                        applicationRowForSidebar(app)
-                    }
-                }
-            }
-            
-            // Add-ons Section
-            if !filteredAddons.isEmpty {
-                Section(header: Text("Add-ons")) {
-                    ForEach(filteredAddons) { addon in
-                        addonRowForSidebar(addon)
-                    }
-                }
-            }
-            
-            // Network Groups Section - Disabled until Clever Cloud stabilizes the feature
-            if isNetworkGroupsEnabled && selectedOrganization?.id != nil {
-                Section(header: Text("Network Groups")) {
-                    Button(action: {
-                        selectNetworkGroups()
-                    }) {
+        }
+        .listStyle(.sidebar)
+    }
+
+    // MARK: - Apps & Add-ons Content (Column 2, iPad)
+
+    private var appsAndAddonsContent: some View {
+        Group {
+            if selectedOrganization == nil {
+                ContentUnavailableView(
+                    "Select an organization",
+                    systemImage: "building.2",
+                    description: Text("Pick an organization in the sidebar to see its applications and add-ons.")
+                )
+            } else {
+                List {
+                    Section {
                         HStack {
-                            Image(systemName: "network")
-                                .foregroundColor(.blue)
-                                .font(.title3)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Network Groups")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-
-                                Text("Manage network connections")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField("Search applications", text: $appSearchText)
+                                .textFieldStyle(.plain)
+                            if !appSearchText.isEmpty {
+                                Button(action: { appSearchText = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
                             }
-
-                            Spacer()
-
-                            // if selectedDetailView == .networkGroups {
-                            //     Image(systemName: "checkmark.circle.fill")
-                            //         .foregroundColor(.blue)
-                            // }
                         }
                     }
-                    .buttonStyle(PlainButtonStyle())
+
+                    Section(header: Text("Applications (\(filteredApplications.count))")) {
+                        if filteredApplications.isEmpty {
+                            Text(appSearchText.isEmpty ? "No applications" : "No match for “\(appSearchText)”")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(filteredApplications) { app in
+                                applicationRowForSidebar(app)
+                            }
+                        }
+                    }
+
+                    Section(header: Text("Add-ons (\(filteredAddons.count))")) {
+                        if filteredAddons.isEmpty {
+                            Text("No add-ons")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(filteredAddons) { addon in
+                                addonRowForSidebar(addon)
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .refreshable {
+                    if let org = selectedOrganization {
+                        autoRefreshOrganizationData(for: org)
+                    }
                 }
             }
         }
-        .listStyle(SidebarListStyle())
     }
     
     // MARK: - Detail Content (for iPad)
@@ -434,14 +463,6 @@ struct ContentView: View {
                     iPadDashboardView
                         .navigationTitle("Dashboard")
                 }
-            // case .networkGroups: // Disabled - Network Groups feature temporarily disabled
-            //     if let organizationId = selectedOrganization?.id {
-            //         NetworkGroupsModernView(organizationId: organizationId, isEmbeddedInNavigationSplitView: true)
-            //             .navigationTitle("Network Groups")
-            //     } else {
-            //         iPadDashboardView
-            //             .navigationTitle("Dashboard")
-            //     }
             }
         }
     }
@@ -628,13 +649,13 @@ struct ContentView: View {
             HStack {
                 Image(systemName: org.name.lowercased().contains("personal") ? "person.circle" : "building.2")
                     .foregroundColor(selectedOrganization?.id == org.id ? .blue : .secondary)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(org.name)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
-                    
+
                     if let description = org.description {
                         Text(description)
                             .font(.caption)
@@ -642,16 +663,37 @@ struct ContentView: View {
                             .lineLimit(1)
                     }
                 }
-                
+
                 Spacer()
-                
+
+                if favoriteOrgIds.contains(org.id) {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.yellow)
+                        .font(.caption)
+                }
+
                 if selectedOrganization?.id == org.id {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.blue)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                toggleFavorite(org)
+            } label: {
+                Label(favoriteOrgIds.contains(org.id) ? "Remove from favorites" : "Add to favorites",
+                      systemImage: favoriteOrgIds.contains(org.id) ? "star.slash" : "star")
+            }
+            Button {
+                UIPasteboard.general.string = org.id
+            } label: {
+                Label("Copy organization ID", systemImage: "doc.on.doc")
+            }
+        }
     }
     
     private func applicationRowForSidebar(_ app: CCApplication) -> some View {
@@ -661,27 +703,49 @@ struct ContentView: View {
             HStack {
                 Image(systemName: "app.badge")
                     .foregroundColor(.purple)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.name)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
-                    
+
                     Text(app.instance.type.capitalized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 let status = applicationStatuses[app.id] ?? "Loading..."
                 Circle()
                     .fill(colorForState(status))
                     .frame(width: 8, height: 8)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                selectApplicationDetail(app)
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+            }
+            Divider()
+            Button {
+                UIPasteboard.general.string = app.id
+            } label: {
+                Label("Copy application ID", systemImage: "doc.on.doc")
+            }
+            if let name = app.name as String? {
+                Button {
+                    UIPasteboard.general.string = name
+                } label: {
+                    Label("Copy name", systemImage: "text.badge.plus")
+                }
+            }
+        }
     }
     
     private func addonRowForSidebar(_ addon: CCAddon) -> some View {
@@ -691,26 +755,41 @@ struct ContentView: View {
             HStack {
                 Image(systemName: "puzzlepiece.extension")
                     .foregroundColor(.orange)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(addon.name)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
-                    
+
                     Text(addon.provider.name)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 Circle()
                     .fill(.green)
                     .frame(width: 8, height: 8)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                selectAddonDetail(addon)
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+            }
+            Divider()
+            Button {
+                UIPasteboard.general.string = addon.id
+            } label: {
+                Label("Copy add-on ID", systemImage: "doc.on.doc")
+            }
+        }
     }
     
     // MARK: - Selection Methods
@@ -765,20 +844,6 @@ struct ContentView: View {
                 // This ensures the UI refresh happens after the state change
                 print("🔄 [iPad Navigation] State updated - DetailView: \(selectedDetailView), Addon: \(selectedAddonForDetail?.name ?? "nil")")
             }
-        }
-    }
-    
-    // Network Groups functionality disabled until Clever Cloud stabilizes the feature
-    private func selectNetworkGroups() {
-        // Disabled - Network Groups feature temporarily unavailable
-        print("🚫 [iPad Navigation] Network Groups functionality disabled")
-        RemoteLogger.shared.info("🚫 [iPad Navigation] Network Groups functionality disabled until further notice")
-
-        // Redirect to dashboard instead
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedDetailView = .dashboard
-            selectedApplicationForDetail = nil
-            selectedAddonForDetail = nil
         }
     }
     
@@ -1168,162 +1233,6 @@ struct ContentView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
-    }
-    
-    // MARK: - Network Groups Card
-    
-    private var networkGroupsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "network")
-                    .foregroundColor(.blue)
-                    .font(.title)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Network Groups")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    
-                    Text("Revolutionary networking visualization")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                // Navigate button pour iPhone, intégration pour iPad
-                if isIpad {
-                    // Sur iPad, déjà intégré dans la sidebar
-                    Text("Integrated")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(15)
-                } else {
-                    // Sur iPhone, navigation vers la vue intégrée
-                    NavigationLink(destination: networkGroupsModernView) {
-                        HStack(spacing: 6) {
-                            Text("Open")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(selectedOrganization != nil ? Color.blue : Color.gray)
-                        .cornerRadius(20)
-                    }
-                    .disabled(selectedOrganization == nil)
-                }
-            }
-            
-            // Feature highlights
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .foregroundColor(.blue)
-                        .font(.title2)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Interactive Graph Visualization")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text("Drag & drop network topology with real-time updates")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                HStack(spacing: 12) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundColor(.green)
-                        .font(.title2)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("WireGuard VPN Configuration")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text("Secure connections between applications and services")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                HStack(spacing: 12) {
-                    Image(systemName: "cube.transparent")
-                        .foregroundColor(.purple)
-                        .font(.title2)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("3D Visualization Coming Soon")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text("Experience your network topology in stunning 3D")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            
-            if selectedOrganization == nil {
-                HStack {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text("Select an organization to access Network Groups")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
-            }
-        }
-        .padding()
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.blue.opacity(0.05),
-                    Color.purple.opacity(0.05)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color.blue.opacity(0.3),
-                            Color.purple.opacity(0.3)
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-    }
-    
-    // MARK: - Network Groups View
-    private var networkGroupsModernView: some View {
-        Group {
-            if let organizationId = selectedOrganization?.id {
-                NetworkGroupsModernView(organizationId: organizationId, isEmbeddedInNavigationSplitView: false).environment(coordinator)
-            } else {
-                Text("Select an organization first")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
     }
     
     // MARK: - Testing Actions Card
@@ -1835,18 +1744,18 @@ struct ContentView: View {
     
     // MARK: - CCApplicationService Test Methods
     
-    private func testGetApplications() {
+    private func testGetApplications(onLoaded: (() -> Void)? = nil) {
         // Determine which organization to use
         let targetOrganization = selectedOrganization ?? organizations.first
         let orgName = targetOrganization?.name ?? "Default"
         let orgId = targetOrganization?.id
-        
+
         errorMessage = "Loading applications for \(orgName)..."
         isLoading = true
-        
+
         // Use organization-specific method if organization is selected
         let applicationsPublisher: AnyPublisher<[CCApplication], CCError>
-        
+
         if let orgId = orgId, orgId.hasPrefix("orga_") {
             // Real organization - use organization applications endpoint WITH STATES
             applicationsPublisher = cleverCloudSDK.applications.getApplicationsWithStates(forOrganization: orgId)
@@ -1854,7 +1763,7 @@ struct ContentView: View {
             // Personal space - use user applications endpoint WITH STATES
             applicationsPublisher = cleverCloudSDK.applications.getApplicationsWithStates()
         }
-        
+
         applicationsPublisher
             .receive(on: DispatchQueue.main)
             .sink(
@@ -1864,15 +1773,11 @@ struct ContentView: View {
                         errorMessage = "getApplications failed for \(orgName): \(error.localizedDescription)"
                     } else {
                         errorMessage = "✅ Applications loaded for \(orgName)!"
+                        onLoaded?()
                     }
                 },
                 receiveValue: { apps in
                     applications = apps
-                    
-                    // Load real status for each application  
-                    Task { @MainActor in
-                        loadApplicationStatuses(for: apps)
-                    }
                 }
             )
             .store(in: &cancellables)
@@ -2076,9 +1981,11 @@ struct ContentView: View {
         
         // Small delay for better UX (visual feedback)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            // Auto-load applications for the new organization
-            testGetApplications()
-            
+            // Auto-load applications for the new organization, then statuses once apps are in
+            testGetApplications {
+                refreshApplicationStatuses()
+            }
+
             // Auto-load add-ons for the new organization (after applications)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 testGetAddons()
@@ -2126,10 +2033,6 @@ struct ContentView: View {
                     print("🔄 [iPad Navigation] Previous addon not found, staying on dashboard")
                 }
             }
-        // case .networkGroups: // Disabled - Network Groups feature temporarily disabled
-        //     // Maintain network groups selection (it will reload with new organization data)
-        //     print("🔄 [iPad Navigation] Maintaining Network Groups selection")
-        //     selectNetworkGroups()
         case .dashboard:
             // Already on dashboard, nothing to do
             break
@@ -2169,10 +2072,15 @@ struct ContentView: View {
     
     // MARK: - Event System Management
     private func setupPollingSystem() {
+        // Idempotent: skip if already running (onAppear can fire multiple times with 3-column NavigationSplitView)
+        guard pollingTimer == nil else {
+            return
+        }
+
         let message = "🔄 Setting up intelligent polling system..."
         print(message)
         writeToDebugLog(message)
-        
+
         // Listen to connection state changes
         cleverCloudSDK.events.connectionStatePublisher
             .receive(on: DispatchQueue.main)
@@ -2180,7 +2088,7 @@ struct ContentView: View {
                 handleConnectionStateChange(state)
             }
             .store(in: &eventsCancellables)
-        
+
         // Listen to platform events
         cleverCloudSDK.events.eventPublisher
             .receive(on: DispatchQueue.main)
@@ -2192,7 +2100,7 @@ struct ContentView: View {
                 handlePlatformEvent(event)
             }
             .store(in: &eventsCancellables)
-        
+
         // Start polling
         startIntelligentPolling()
     }

@@ -42,7 +42,21 @@ struct test0App: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .toolbar) {
+                Button("Refresh") {
+                    NotificationCenter.default.post(name: .appRefreshRequested, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
+            SidebarCommands()
+        }
     }
+}
+
+extension Notification.Name {
+    static let appRefreshRequested = Notification.Name("appRefreshRequested")
 }
 
 /// Vue racine de l'application
