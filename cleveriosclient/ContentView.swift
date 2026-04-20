@@ -41,31 +41,24 @@ struct ContentView: View {
 
     @State private var cancellables = Set<AnyCancellable>()
     @State private var refreshTimer: Timer?
-    @State private var dataRefreshTimer: Timer?
-
-    // Simple application status tracking
-    @State private var applicationStatuses: [String: String] = [:]
-
-    // Event system tracking
-    @State private var eventsCancellables = Set<AnyCancellable>()
 
     // Navigation
     @State private var navigationPath = NavigationPath()
-    
+
     // MARK: - Properties
     @State private var showingAlert = false
     @State private var authButtonText = "🔑 Login with Clever Cloud"
     @State private var authButtonColor = Color.blue
     @State private var showingPreventDisappear = false
     @State private var navigateToMain = false
-    @State private var pollingTimer: Timer?
-    
-    @State private var lastEventReceived: String = "None"
-    
-    // MARK: - Event System State
-    @State private var isPollingActive = false
-    @State private var pollingInterval: TimeInterval = 15.0
-    @State private var eventSystemMode: String = "Disconnected"
+
+    // MARK: - Polling (delegated to AppState)
+    // Read-only proxies so existing callsites in the body continue to compile.
+    private var applicationStatuses: [String: String] { appState?.applicationStatuses ?? [:] }
+    private var isPollingActive: Bool { appState?.isPollingActive ?? false }
+    private var pollingInterval: TimeInterval { appState?.pollingInterval ?? 15.0 }
+    private var eventSystemMode: String { appState?.eventSystemMode ?? "Disconnected" }
+    private var lastEventReceived: String { appState?.lastEventReceived ?? "None" }
     
     // MARK: - Creation Views State
     @State private var showingCreateAddon = false
@@ -207,7 +200,7 @@ struct ContentView: View {
         }
         .onAppear {
             loadData()
-            setupPollingSystem()
+            startAppStatePolling()
             loadFavorites()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ApplicationDestroyed"))) { notification in
@@ -244,7 +237,7 @@ struct ContentView: View {
             }
         }
         .onDisappear {
-            teardownPollingSystem()
+            appState?.stopPolling()
         }
         .onChange(of: selectedOrganization) { oldValue, newValue in
             if let newOrg = newValue {
@@ -304,7 +297,7 @@ struct ContentView: View {
         }
         .onAppear {
             loadData()
-            setupPollingSystem()
+            startAppStatePolling()
             loadFavorites()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ApplicationDestroyed"))) { notification in
@@ -329,7 +322,7 @@ struct ContentView: View {
             }
         }
         .onDisappear {
-            teardownPollingSystem()
+            appState?.stopPolling()
         }
         .onChange(of: selectedOrganization) { oldValue, newValue in
             if let newOrg = newValue {
@@ -1585,39 +1578,6 @@ struct ContentView: View {
     
     // MARK: - Methods
     
-    private func loadApplications() {
-        isLoading = true
-        errorMessage = nil
-        
-        // Load applications using SDK
-        cleverCloudSDK.getUserApplications()
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    isLoading = false
-                    if case .failure(let error) = completion {
-                        errorMessage = error.localizedDescription
-                        print("❌ REAL API ERROR: \(error)")
-                        print("📋 Error Type: \(error)")
-                        print("📋 Localized: \(error.localizedDescription)")
-                    }
-                },
-                receiveValue: { apps in
-                    applications = apps
-                    print("✅ REAL API SUCCESS: Loaded \(apps.count) applications from Clever Cloud!")
-                    for app in apps {
-                        print("📱 App: \(app.name) - \(app.instance.type)")
-                    }
-                    
-                    // Load real status for each application
-                    Task {
-                        loadApplicationStatuses(for: apps)
-                    }
-                }
-            )
-            .store(in: &cancellables)
-    }
-    
     private func testOrganizations() {
         organizationError = nil
         organizations = []
@@ -1653,95 +1613,20 @@ struct ContentView: View {
     @MainActor
     private func loadData() {
         testOrganizations()
-        // Load applications and statuses after organizations are loaded
-        if !applications.isEmpty {
-            loadApplicationStatuses(for: applications)
-        }
     }
-    
-    @MainActor
-    private func loadApplicationStatuses(for apps: [CCApplication]) {
-        // Initialize apps with Loading status
-        for app in apps {
-            applicationStatuses[app.id] = "Loading..."
-        }
-        
-        // Load real application statuses using instance API calls (with concurrency safety)
-        let group = DispatchGroup()
-        
-        // Capture main actor values before entering background context
-        let currentOrgId = selectedOrganization?.id
-        let sdk = cleverCloudSDK
-        
-        // Process apps sequentially to be conservative
-        for (index, app) in apps.enumerated() {
-            group.enter()
-            
-            let appId = app.id
-            _ = app.name
-            
-            // Make the API call on main queue to avoid concurrency issues
-            let instancesPublisher: AnyPublisher<[CCApplicationInstance], CCError>
-            if let orgId = currentOrgId, orgId.hasPrefix("orga_") {
-                // Organization context
-                instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId, organizationId: orgId)
-            } else {
-                // Personal space context
-                instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId)
+
+    /// Start the shared polling system in AppState, wired to ContentView's current data.
+    private func startAppStatePolling() {
+        appState?.startPolling(
+            applicationsProvider: { applications },
+            organizationIdProvider: { selectedOrganization?.id },
+            dataRefreshTick: {
+                testGetApplications()
+                testGetAddons()
             }
-            
-            // Add small delay between requests to be conservative
-            let delay = Double(index) * 0.2 // 200ms delay between each request
-            
-            instancesPublisher
-                .delay(for: .milliseconds(Int(delay * 1000)), scheduler: DispatchQueue.main)
-                .timeout(.seconds(10), scheduler: DispatchQueue.main)
-                .receive(on: DispatchQueue.main)
-                .sink(
-                    receiveCompletion: { completion in
-                        if case .failure(_) = completion {
-                            applicationStatuses[appId] = "Error"
-                        }
-                        group.leave()
-                    },
-                    receiveValue: { instances in
-                        let computedStatus = computeApplicationStatus(from: instances)
-                        applicationStatuses[appId] = computedStatus
-                    }
-                )
-                .store(in: &cancellables)
-        }
+        )
     }
-    
-    /// Compute application status from instances (following clever-tools computeStatus pattern)
-    private func computeApplicationStatus(from instances: [CCApplicationInstance]) -> String {
-        guard !instances.isEmpty else {
-            return "Stopped"
-        }
-        
-        let instanceStates = instances.map { $0.state.uppercased() }
-        
-        // Priority order based on clever-tools logic
-        if instanceStates.contains("FAILED") {
-            return "Failed"
-        }
-        
-        if instanceStates.contains("DEPLOYING") {
-            return "Deploying"
-        }
-        
-        if instanceStates.contains("UP") {
-            return "Running"
-        }
-        
-        if instanceStates.contains("DOWN") || instanceStates.contains("SHOULD_BE_DOWN") {
-            return "Stopped"
-        }
-        
-        // Default case
-        return "Unknown"
-    }
-    
+
     // MARK: - CCApplicationService Test Methods
     
     private func testGetApplications(onLoaded: (() -> Void)? = nil) {
@@ -1983,7 +1868,7 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // Auto-load applications for the new organization, then statuses once apps are in
             testGetApplications {
-                refreshApplicationStatuses()
+                appState?.refreshApplicationStatuses()
             }
 
             // Auto-load add-ons for the new organization (after applications)
@@ -2070,129 +1955,7 @@ struct ContentView: View {
         selectedOrganization = nil
     }
     
-    // MARK: - Event System Management
-    private func setupPollingSystem() {
-        // Idempotent: skip if already running (onAppear can fire multiple times with 3-column NavigationSplitView)
-        guard pollingTimer == nil else {
-            return
-        }
 
-        let message = "🔄 Setting up intelligent polling system..."
-        print(message)
-        writeToDebugLog(message)
-
-        // Listen to connection state changes
-        cleverCloudSDK.events.connectionStatePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { state in
-                handleConnectionStateChange(state)
-            }
-            .store(in: &eventsCancellables)
-
-        // Listen to platform events
-        cleverCloudSDK.events.eventPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { completion in
-                if case .failure(let error) = completion {
-                    print("❌ Events stream error: \(error)")
-                }
-            } receiveValue: { event in
-                handlePlatformEvent(event)
-            }
-            .store(in: &eventsCancellables)
-
-        // Start polling
-        startIntelligentPolling()
-    }
-    
-    private func teardownPollingSystem() {
-        print("🛑 Stopping polling system...")
-        writeToDebugLog("🛑 Stopping polling system...")
-        
-        cleverCloudSDK.events.disconnect()
-        eventsCancellables.removeAll()
-        stopIntelligentPolling()
-        
-        isPollingActive = false
-        eventSystemMode = "Disconnected"
-    }
-    
-    private func handleConnectionStateChange(_ state: CCConnectionState) {
-        switch state {
-        case .disconnected:
-            isPollingActive = false
-            eventSystemMode = "Disconnected"
-            print("⚪ Event system disconnected")
-            
-        case .polling:
-            isPollingActive = true
-            eventSystemMode = "Polling Active"
-            print("🟢 Polling system active")
-            
-        case .failed(let error):
-            isPollingActive = false
-            eventSystemMode = "Error"
-            print("🔴 Event system error: \(error)")
-        }
-    }
-    
-    private func handlePlatformEvent(_ event: CCPlatformEvent) {
-        print("📡 Platform event: \(event.type)")
-        lastEventReceived = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-        
-        // Handle specific event types here
-        // For example: refresh application statuses on status change events
-    }
-    
-    // MARK: - Intelligent Polling System
-    private func startIntelligentPolling() {
-        // Stop any existing timer
-        stopIntelligentPolling()
-        
-        print("🔄 Starting intelligent status polling every \(pollingInterval) seconds")
-        writeToDebugLog("🔄 Starting intelligent status polling every \(pollingInterval) seconds")
-        
-        // Initial poll immediately
-        refreshApplicationStatuses()
-        
-        // Connect to events service
-        cleverCloudSDK.events.connect()
-        
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: pollingInterval, repeats: true) { _ in
-            Task { @MainActor in
-                refreshApplicationStatuses()
-            }
-        }
-
-        // Auto-refresh apps/addons list every 10s
-        // Safe with NavigationStack path-based navigation (array updates don't pop)
-        dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
-            Task { @MainActor in
-                testGetApplications()
-                testGetAddons()
-            }
-        }
-    }
-
-    private func stopIntelligentPolling() {
-        pollingTimer?.invalidate()
-        pollingTimer = nil
-        dataRefreshTimer?.invalidate()
-        dataRefreshTimer = nil
-        print("⏹️ Stopped intelligent polling")
-        writeToDebugLog("⏹️ Stopped intelligent polling")
-    }
-    
-    private func refreshApplicationStatuses() {
-        guard !applications.isEmpty else { return }
-        
-        print("🔄 Refreshing application statuses...")
-        writeToDebugLog("🔄 Refreshing application statuses...")
-        Task { @MainActor in
-            loadApplicationStatuses(for: applications)
-        }
-    }
-    
 
     
     private func writeToDebugLog(_ message: String) {
