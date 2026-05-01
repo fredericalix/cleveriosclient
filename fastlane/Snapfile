@@ -1,0 +1,38 @@
+# Devices Apple requires for App Store screenshots (2026):
+#   - iPhone 6.9"  → iPhone 16 Pro Max  (1320 x 2868)
+#   - iPad 13"     → iPad Pro 13-inch (M4) (2064 x 2752)
+# Apple infers screenshots for smaller iPhone/iPad sizes from these two.
+
+devices([
+  "iPhone 16 Pro Max",
+  "iPad Pro 13-inch (M4)"
+])
+
+languages([
+  "en-US"
+])
+
+# UI test scheme that drives screenshot capture.
+# This scheme must include the cleveriosclientUITests target with the
+# ScreenshotTests.swift cases — see fastlane/README.md for setup.
+scheme("cleveriosclient")
+
+# Where to drop the generated PNG files.
+output_directory("./fastlane/screenshots")
+
+# Always clear previous screenshots so we don't ship stale ones.
+clear_previous_screenshots(true)
+
+# Override the status bar so it looks pristine in every screenshot
+# (full battery, full signal, 9:41 — the Apple convention).
+override_status_bar(true)
+
+# Reinstall the app between languages/devices to start from a clean state.
+reinstall_app(false)
+
+# Concurrent simulators speed things up considerably on M-series Macs.
+concurrent_simulators(true)
+
+# Stop on the first failure so a broken scenario doesn't waste an hour
+# of simulator boot time across all devices.
+stop_after_first_error(true)
