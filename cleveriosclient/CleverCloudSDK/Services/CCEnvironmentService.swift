@@ -59,7 +59,7 @@ public class CCEnvironmentService {
     /// - Parameter applicationId: The application identifier
     /// - Returns: Publisher with environment variables response
     public func getEnvironmentVariables(for applicationId: String) -> AnyPublisher<CCEnvironmentVariablesResponse, CCError> {
-        if enableLogging { print("🔧 Getting environment variables for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Getting environment variables for application: \(applicationId)") }
         
         let endpoint = "/self/applications/\(applicationId)/env"
         return httpClient.get(endpoint, apiVersion: .v2)
@@ -83,7 +83,7 @@ public class CCEnvironmentService {
                 return try decoder.decode(CCEnvironmentVariablesResponse.self, from: data)
             }
             .mapError { error in
-                if self.enableLogging { print("❌ Failed to get environment variables: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to get environment variables: \(error)") }
                 return CCError.parsingError(error)
             }
             .receive(on: DispatchQueue.main)
@@ -99,7 +99,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         variable: CCEnvironmentVariableUpdate
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Setting environment variable \(variable.name) for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Setting environment variable \(variable.name) for application: \(applicationId)") }
         
         let endpoint = "/self/applications/\(applicationId)/env"
         let body = [variable.name: variable.value]
@@ -112,7 +112,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to set environment variable: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to set environment variable: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to update environment variable: \(error.localizedDescription)"
@@ -132,7 +132,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         batch: CCEnvironmentVariablesBatch
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Batch updating environment variables for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Batch updating environment variables for application: \(applicationId)") }
         
         var updateDict: [String: String] = [:]
         
@@ -158,7 +158,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to batch update environment variables: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to batch update environment variables: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to update environment variables: \(error.localizedDescription)"
@@ -178,7 +178,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         variableName: String
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Deleting environment variable \(variableName) for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Deleting environment variable \(variableName) for application: \(applicationId)") }
         
         let endpoint = "/self/applications/\(applicationId)/env/\(variableName)"
         
@@ -190,7 +190,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to delete environment variable: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to delete environment variable: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to delete environment variable: \(error.localizedDescription)"
@@ -207,7 +207,7 @@ public class CCEnvironmentService {
     /// - Parameter applicationId: The application identifier
     /// - Returns: Publisher with application configuration
     public func getApplicationConfiguration(for applicationId: String) -> AnyPublisher<CCApplicationConfig, CCError> {
-        if enableLogging { print("🔧 Getting configuration for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Getting configuration for application: \(applicationId)") }
         
         let endpoint = "/applications/\(applicationId)"
         return httpClient.get(endpoint, apiVersion: .v2)
@@ -223,7 +223,7 @@ public class CCEnvironmentService {
                 return try decoder.decode(CCApplicationConfig.self, from: data)
             }
             .mapError { error in
-                if self.enableLogging { print("❌ Failed to get application configuration: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to get application configuration: \(error)") }
                 return CCError.parsingError(error)
             }
             .receive(on: DispatchQueue.main)
@@ -246,7 +246,7 @@ public class CCEnvironmentService {
         instanceConfig: CCAppInstanceConfiguration,
         organizationId: String? = nil
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Scaling app following clever-tools pattern: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Scaling app following clever-tools pattern: \(applicationId)") }
         
         // Step 1: Get current application (following clever-tools setScalability)
         let getAppEndpoint: String
@@ -264,11 +264,11 @@ public class CCEnvironmentService {
                 }
                 
                 if self.enableLogging { 
-                    print("📋 Current app instance config:")
-                    print("   minFlavor: \(currentApp.instance.minFlavor.name)")
-                    print("   maxFlavor: \(currentApp.instance.maxFlavor.name)")
-                    print("   minInstances: \(currentApp.instance.minInstances)")
-                    print("   maxInstances: \(currentApp.instance.maxInstances)")
+                    debugLog("📋 Current app instance config:")
+                    debugLog("   minFlavor: \(currentApp.instance.minFlavor.name)")
+                    debugLog("   maxFlavor: \(currentApp.instance.maxFlavor.name)")
+                    debugLog("   minInstances: \(currentApp.instance.minInstances)")
+                    debugLog("   maxInstances: \(currentApp.instance.maxInstances)")
                 }
                 
                 // Step 2: Convert current flavor objects to string names (clever-tools pattern)
@@ -283,7 +283,7 @@ public class CCEnvironmentService {
                 let newFlavor = instanceConfig.flavor
                 minFlavor = newFlavor
                 maxFlavor = newFlavor
-                if self.enableLogging { print("📋 Setting both flavors to: \(newFlavor)") }
+                if self.enableLogging { debugLog("📋 Setting both flavors to: \(newFlavor)") }
                 
                 // Handle instances with auto-adjustment (clever-tools pattern)
                 let minInstances: Int
@@ -319,11 +319,11 @@ public class CCEnvironmentService {
                 let mergedConfig = self.mergeScalabilityParameters(scalabilityParams, with: currentApp.instance)
                 
                 if self.enableLogging {
-                    print("🔧 Merged instance configuration (clever-tools pattern):")
-                    print("   minFlavor: \(mergedConfig.minFlavor)")
-                    print("   maxFlavor: \(mergedConfig.maxFlavor)")
-                    print("   minInstances: \(mergedConfig.minInstances)")
-                    print("   maxInstances: \(mergedConfig.maxInstances)")
+                    debugLog("🔧 Merged instance configuration (clever-tools pattern):")
+                    debugLog("   minFlavor: \(mergedConfig.minFlavor)")
+                    debugLog("   maxFlavor: \(mergedConfig.maxFlavor)")
+                    debugLog("   minInstances: \(mergedConfig.minInstances)")
+                    debugLog("   maxInstances: \(mergedConfig.maxInstances)")
                 }
                 
                 // Step 4: Use updateApplication endpoint (not /instances!)
@@ -344,11 +344,11 @@ public class CCEnvironmentService {
                 )
                 .map { (data: Data) -> CCConfigurationUpdateResponse in
                     if self.enableLogging { 
-                        print("✅ Application updated successfully using clever-tools method") 
+                        debugLog("✅ Application updated successfully using clever-tools method") 
                         
                         // Optional: Log the response for debugging
                         if let responseString = String(data: data, encoding: .utf8) {
-                            print("📦 API Response: \(responseString.prefix(200))...")
+                            debugLog("📦 API Response: \(responseString.prefix(200))...")
                         }
                     }
                     
@@ -359,7 +359,7 @@ public class CCEnvironmentService {
                     )
                 }
                 .catch { error in
-                    if self.enableLogging { print("❌ Failed to update application configuration: \(error)") }
+                    if self.enableLogging { debugLog("❌ Failed to update application configuration: \(error)") }
                     
                     return Just(CCConfigurationUpdateResponse(
                         success: false,
@@ -377,7 +377,7 @@ public class CCEnvironmentService {
     /// - Parameter applicationId: The application identifier
     /// - Returns: Publisher with domains list
     public func getApplicationDomains(for applicationId: String) -> AnyPublisher<[String], CCError> {
-                if enableLogging { print("🔧 Getting domains for application: \(applicationId)") }
+                if enableLogging { debugLog("🔧 Getting domains for application: \(applicationId)") }
 
         let endpoint = "/applications/\(applicationId)/vhosts"
         return httpClient.get(endpoint, apiVersion: .v2)
@@ -394,7 +394,7 @@ public class CCEnvironmentService {
                 return []
             }
             .mapError { error in
-                if self.enableLogging { print("❌ Failed to get application domains: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to get application domains: \(error)") }
                 return CCError.parsingError(error)
             }
             .receive(on: DispatchQueue.main)
@@ -410,7 +410,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         domain: String
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Adding custom domain \(domain) for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Adding custom domain \(domain) for application: \(applicationId)") }
         
         let endpoint = "/applications/\(applicationId)/vhosts"
         let body = ["fqdn": domain]
@@ -423,7 +423,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to add custom domain: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to add custom domain: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to add custom domain: \(error.localizedDescription)"
@@ -443,7 +443,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         domain: String
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Removing custom domain \(domain) for application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Removing custom domain \(domain) for application: \(applicationId)") }
         
         let endpoint = "/applications/\(applicationId)/vhosts/\(domain)"
         
@@ -455,7 +455,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to remove custom domain: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to remove custom domain: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to remove custom domain: \(error.localizedDescription)"
@@ -477,7 +477,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Starting application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Starting application: \(applicationId)") }
         
         let endpoint: String
         if let orgId = organizationId {
@@ -494,7 +494,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to start application: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to start application: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to start application: \(error.localizedDescription)"
@@ -514,7 +514,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Restarting application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Restarting application: \(applicationId)") }
         
         let endpoint: String
         if let orgId = organizationId {
@@ -531,7 +531,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to restart application: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to restart application: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to restart application: \(error.localizedDescription)"
@@ -551,7 +551,7 @@ public class CCEnvironmentService {
         for applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> {
-        if enableLogging { print("🔧 Stopping application: \(applicationId)") }
+        if enableLogging { debugLog("🔧 Stopping application: \(applicationId)") }
         
         let endpoint: String
         if let orgId = organizationId {
@@ -568,7 +568,7 @@ public class CCEnvironmentService {
                 )
             }
             .catch { error in
-                if self.enableLogging { print("❌ Failed to stop application: \(error)") }
+                if self.enableLogging { debugLog("❌ Failed to stop application: \(error)") }
                 return Just(CCConfigurationUpdateResponse(
                     success: false,
                     message: "Failed to stop application: \(error.localizedDescription)"
@@ -584,7 +584,7 @@ public class CCEnvironmentService {
     /// Get predefined environment templates
     /// - Returns: Publisher with environment templates
     public func getEnvironmentTemplates() -> AnyPublisher<[CCEnvironmentVariableUpdate], CCError> {
-        if enableLogging { print("🔧 Getting environment templates") }
+        if enableLogging { debugLog("🔧 Getting environment templates") }
         
         return Just([
             // Node.js templates

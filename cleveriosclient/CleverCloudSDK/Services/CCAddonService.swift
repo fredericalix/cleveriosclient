@@ -19,11 +19,11 @@ public class CCAddonService: ObservableObject {
     /// Get all add-ons for the current user
     /// - Returns: Publisher with array of CCAddon objects
     public func getUserAddons() -> AnyPublisher<[CCAddon], CCError> {
-        print("🚀 CCAddonService.getUserAddons() called")
+        debugLog("🚀 CCAddonService.getUserAddons() called")
         // Try personal space first, then fallback to user addons
         return httpClient.get("/self/addons", apiVersion: .v2)
             .catch { error -> AnyPublisher<[CCAddon], CCError> in
-                print("⚠️ /self/addons failed, trying profile space...")
+                debugLog("⚠️ /self/addons failed, trying profile space...")
                 return self.httpClient.get("/self/addons", apiVersion: .v2)
             }
             .eraseToAnyPublisher()
@@ -62,7 +62,7 @@ public class CCAddonService: ObservableObject {
         request: CCAddonCreationRequest,
         organizationId: String? = nil
     ) -> AnyPublisher<CCAddonPreorderResponse, CCError> {
-        print("🚀 CCAddonService.preorderAddon(name: \(request.name)) called")
+        debugLog("🚀 CCAddonService.preorderAddon(name: \(request.name)) called")
         let endpoint: String
         if let orgId = organizationId {
             endpoint = "/organisations/\(orgId)/addons/preorders"
@@ -81,7 +81,7 @@ public class CCAddonService: ObservableObject {
         request: CCAddonCreationRequest,
         organizationId: String? = nil
     ) -> AnyPublisher<CCAddon, CCError> {
-        print("🚀 CCAddonService.createAddon(name: \(request.name)) called")
+        debugLog("🚀 CCAddonService.createAddon(name: \(request.name)) called")
         let endpoint: String
         if let orgId = organizationId {
             endpoint = "/organisations/\(orgId)/addons"
@@ -162,7 +162,7 @@ public class CCAddonService: ObservableObject {
             endpoint = "/self/addons/\(addonId)/env"
         }
         
-        print("🔍 [CCAddonService] Getting environment variables from endpoint: \(endpoint)")
+        debugLog("🔍 [CCAddonService] Getting environment variables from endpoint: \(endpoint)")
         
         // First try to decode as array of environment variable objects
         let arrayPublisher: AnyPublisher<[EnvironmentVariable], CCError> = httpClient.get(endpoint, apiVersion: .v2)
@@ -173,24 +173,24 @@ public class CCAddonService: ObservableObject {
                 for env in envArray {
                     dict[env.name] = env.value
                 }
-                print("✅ [CCAddonService] Converted \(envArray.count) environment variables to dictionary")
+                debugLog("✅ [CCAddonService] Converted \(envArray.count) environment variables to dictionary")
                 return dict
             }
             .catch { error -> AnyPublisher<[String: String], CCError> in
-                print("⚠️ [CCAddonService] Failed to decode as array, trying as dictionary: \(error)")
+                debugLog("⚠️ [CCAddonService] Failed to decode as array, trying as dictionary: \(error)")
                 // If array fails, try as dictionary
                 return self.httpClient.get(endpoint, apiVersion: .v2)
             }
             .handleEvents(
                 receiveOutput: { variables in
-                    print("✅ [CCAddonService] Final result: \(variables.count) environment variables")
+                    debugLog("✅ [CCAddonService] Final result: \(variables.count) environment variables")
                     for (key, value) in variables {
-                        print("   - \(key): \(value.prefix(50))...")
+                        debugLog("   - \(key): \(value.prefix(50))...")
                     }
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        print("❌ [CCAddonService] Failed to get environment variables: \(error)")
+                        debugLog("❌ [CCAddonService] Failed to get environment variables: \(error)")
                     }
                 }
             )
@@ -237,17 +237,17 @@ public class CCAddonService: ObservableObject {
             endpoint = "/self/addons/\(addonId)/applications"
         }
         
-        print("🔗 [CCAddonService] Getting linked applications from endpoint: \(endpoint)")
+        debugLog("🔗 [CCAddonService] Getting linked applications from endpoint: \(endpoint)")
         
         // Try first as array of strings
         return httpClient.get(endpoint, apiVersion: .v2)
             .catch { error -> AnyPublisher<[String], CCError> in
-                print("⚠️ [CCAddonService] Failed to decode as strings, trying as objects: \(error)")
+                debugLog("⚠️ [CCAddonService] Failed to decode as strings, trying as objects: \(error)")
                 
                 // If strings fail, try as array of objects
                 return self.httpClient.get(endpoint, apiVersion: .v2)
                     .catch { _ -> AnyPublisher<[CCAddonApplicationLink], CCError> in
-                        print("⚠️ [CCAddonService] Failed to decode as objects, returning empty")
+                        debugLog("⚠️ [CCAddonService] Failed to decode as objects, returning empty")
                         return Just([])
                             .setFailureType(to: CCError.self)
                             .eraseToAnyPublisher()
@@ -258,9 +258,9 @@ public class CCAddonService: ObservableObject {
                     .eraseToAnyPublisher()
             }
             .map { (appIds: [String]) -> [CCAddonApplicationLink] in
-                print("📱 [CCAddonService] Received \(appIds.count) app IDs")
+                debugLog("📱 [CCAddonService] Received \(appIds.count) app IDs")
                 return appIds.map { appId in
-                    print("   - App ID: \(appId)")
+                    debugLog("   - App ID: \(appId)")
                     return CCAddonApplicationLink(
                         appId: appId,
                         name: "Application",
@@ -413,19 +413,19 @@ public class CCAddonService: ObservableObject {
         // Clever Cloud CLI uses /v2/logs/{addonId} directly, treating addon as an app
         let endpoint = "/logs/\(addonId)?limit=\(limit)&order=\(order)"
         
-        print("🔍 [CCAddonService] Getting logs from endpoint: \(endpoint)")
-        print("🔍 [CCAddonService] Addon ID: \(addonId)")
-        print("📝 [CCAddonService] Using v2 logs endpoint like clever-tools CLI")
+        debugLog("🔍 [CCAddonService] Getting logs from endpoint: \(endpoint)")
+        debugLog("🔍 [CCAddonService] Addon ID: \(addonId)")
+        debugLog("📝 [CCAddonService] Using v2 logs endpoint like clever-tools CLI")
         
         // Decode as array of ElasticsearchLogEntry first
         return httpClient.get(endpoint, apiVersion: .v2)
             .handleEvents(
                 receiveOutput: { (entries: [ElasticsearchLogEntry]) in
-                    print("📝 [CCAddonService] Received \(entries.count) Elasticsearch log entries")
+                    debugLog("📝 [CCAddonService] Received \(entries.count) Elasticsearch log entries")
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        print("❌ [CCAddonService] Failed to decode Elasticsearch logs: \(error)")
+                        debugLog("❌ [CCAddonService] Failed to decode Elasticsearch logs: \(error)")
                     }
                 }
             )
@@ -477,7 +477,7 @@ public class CCAddonService: ObservableObject {
                     )
                 }
                 
-                print("✅ [CCAddonService] Converted \(logs.count) log entries from Elasticsearch format")
+                debugLog("✅ [CCAddonService] Converted \(logs.count) log entries from Elasticsearch format")
                 return logs
             }
             .eraseToAnyPublisher()
@@ -503,8 +503,8 @@ public class CCAddonService: ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        print("📊 [CCAddonService] Getting metrics for addon: \(addonId)")
-        print("📊 [CCAddonService] Step 1: Getting metrics token...")
+        debugLog("📊 [CCAddonService] Getting metrics for addon: \(addonId)")
+        debugLog("📊 [CCAddonService] Step 1: Getting metrics token...")
         
         // First get the metrics token
         return getMetricsToken(organizationId: orgId)
@@ -515,13 +515,13 @@ public class CCAddonService: ObservableObject {
                 }
                 
                 guard let token = tokenResponse["token"] as? String else {
-                    print("❌ [CCAddonService] No token in response")
+                    debugLog("❌ [CCAddonService] No token in response")
                     return Fail(error: CCError.invalidResponse)
                         .eraseToAnyPublisher()
                 }
                 
-                print("✅ [CCAddonService] Got metrics token: \(token.prefix(20))...")
-                print("📊 [CCAddonService] Step 2: Getting metrics with token...")
+                debugLog("✅ [CCAddonService] Got metrics token: \(token.prefix(20))...")
+                debugLog("📊 [CCAddonService] Step 2: Getting metrics with token...")
                 
                 // Now use the token to get metrics from v4 API
                 // Try the standard endpoint but with token as query parameter
@@ -554,7 +554,7 @@ public class CCAddonService: ObservableObject {
                 )
                 .handleEvents(
                     receiveOutput: { (metrics: CCAddonMetrics) in
-                        print("✅ [CCAddonService] Successfully received metrics from v4 API")
+                        debugLog("✅ [CCAddonService] Successfully received metrics from v4 API")
                         RemoteLogger.shared.debug("[CleverMetrics] Successfully received v4 metrics", metadata: [
                             "addonId": addonId,
                             "endpoint": fullEndpoint
@@ -562,7 +562,7 @@ public class CCAddonService: ObservableObject {
                     },
                     receiveCompletion: { completion in
                         if case .failure(let error) = completion {
-                            print("❌ [CCAddonService] Failed to get v4 metrics: \(error)")
+                            debugLog("❌ [CCAddonService] Failed to get v4 metrics: \(error)")
                             RemoteLogger.shared.error("[CleverMetrics] Failed to get v4 metrics", metadata: [
                                 "error": error.localizedDescription,
                                 "endpoint": fullEndpoint,
@@ -576,7 +576,7 @@ public class CCAddonService: ObservableObject {
             }
             .catch { error -> AnyPublisher<CCAddonMetrics, CCError> in
                 // If metrics token or v4 fails, try v2 endpoint as fallback
-                print("⚠️ [CCAddonService] Metrics token or V4 failed, trying v2 fallback: \(error)")
+                debugLog("⚠️ [CCAddonService] Metrics token or V4 failed, trying v2 fallback: \(error)")
                 let v2Endpoint = "/organisations/\(orgId)/applications/\(addonId)/metrics?span=\(period)"
                 
                 RemoteLogger.shared.debug("[CleverMetrics] Falling back to v2 endpoint", metadata: [
@@ -624,7 +624,7 @@ public class CCAddonService: ObservableObject {
             endpoint += "?" + queryParams.joined(separator: "&")
         }
         
-        print("💰 [CCAddonService] Getting consumption from endpoint: \(endpoint)")
+        debugLog("💰 [CCAddonService] Getting consumption from endpoint: \(endpoint)")
         
         return httpClient.get(endpoint, apiVersion: .v2)
             .eraseToAnyPublisher()
@@ -687,7 +687,7 @@ public class CCAddonService: ObservableObject {
         
         endpoint += "?" + queryParams.joined(separator: "&")
         
-        print("📈 [CCAddonService] Getting time series for metric '\(metric)' from: \(endpoint)")
+        debugLog("📈 [CCAddonService] Getting time series for metric '\(metric)' from: \(endpoint)")
         
         // Log detailed request info
         RemoteLogger.shared.debug("[CleverMetrics] Requesting time series", metadata: [

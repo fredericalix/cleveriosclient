@@ -1563,7 +1563,7 @@ struct ApplicationDetailView: View {
     }
     
     private func editVariable(_ variable: CCEnvironmentVariable) {
-        print("Edit variable: \(variable.name)")
+        debugLog("Edit variable: \(variable.name)")
         editingVariable = variable
         editVariableValue = variable.value
         showingEditVariable = true
@@ -1829,7 +1829,7 @@ struct ApplicationDetailView: View {
             // Check if this notification is for our application
             if let appId = notification.object as? String,
                appId == applicationId {
-                print("🔄 [ApplicationDetailView] Received refresh notification for application: \(appId)")
+                debugLog("🔄 [ApplicationDetailView] Received refresh notification for application: \(appId)")
                 
                 // Use Task to handle the async call properly
                 Task { @MainActor in
@@ -1844,7 +1844,7 @@ struct ApplicationDetailView: View {
             object: nil,
             queue: .main
         ) { _ in
-            print("🔄 [ApplicationDetailView] Received global refresh notification")
+            debugLog("🔄 [ApplicationDetailView] Received global refresh notification")
             Task { @MainActor in
                 self.forceCompleteRefresh()
             }
@@ -1853,21 +1853,21 @@ struct ApplicationDetailView: View {
     
     /// Force complete refresh of all application data 
     @MainActor private func forceCompleteRefresh() {
-        print("🔄 [ApplicationDetailView] Starting force complete refresh...")
+        debugLog("🔄 [ApplicationDetailView] Starting force complete refresh...")
         
         // Reset loading states
         isLoading = true
         isLoadingLogs = true
         
         // 🎯 CRITICAL FIX: Update ALL local state properties with fresh application data
-        print("🔄 [ApplicationDetailView] BEFORE refresh - Current flavor: \(currentApplicationFlavor?.name ?? "nil"), App flavor: \(application.instance.minFlavor.name)")
+        debugLog("🔄 [ApplicationDetailView] BEFORE refresh - Current flavor: \(currentApplicationFlavor?.name ?? "nil"), App flavor: \(application.instance.minFlavor.name)")
         
         selectedFlavor = application.instance.minFlavor
         currentApplicationFlavor = application.instance.minFlavor
         tempMinInstances = Double(application.instance.minInstances)
         tempMaxInstances = Double(application.instance.maxInstances)
         
-        print("🔄 [ApplicationDetailView] AFTER local update - New flavor: \(currentApplicationFlavor?.name ?? "nil")")
+        debugLog("🔄 [ApplicationDetailView] AFTER local update - New flavor: \(currentApplicationFlavor?.name ?? "nil")")
         
         // Force reload application data first from API
         self.reloadApplicationFromAPI()
@@ -1891,7 +1891,7 @@ struct ApplicationDetailView: View {
                 tempMinInstances = Double(application.instance.minInstances)
                 tempMaxInstances = Double(application.instance.maxInstances)
                 
-                print("🔄 [ApplicationDetailView] Force complete refresh completed! Final flavor: \(currentApplicationFlavor?.name ?? "nil")")
+                debugLog("🔄 [ApplicationDetailView] Force complete refresh completed! Final flavor: \(currentApplicationFlavor?.name ?? "nil")")
                 isLoading = false
                 isLoadingLogs = false
             }
@@ -2188,7 +2188,7 @@ struct ApplicationDetailView: View {
                     reloadApplicationFromAPI()
                     
                     // Also log the error for debugging
-                    print("⚠️ API call had error (but may have succeeded): \(error.localizedDescription)")
+                    debugLog("⚠️ API call had error (but may have succeeded): \(error.localizedDescription)")
                 } else {
                     configurationMessage = "✅ Instance type changed to \(newFlavor.name.uppercased()) successfully!"
                     showingInstanceTypePicker = false
@@ -2206,7 +2206,7 @@ struct ApplicationDetailView: View {
                     // 🔄 Even if response indicates failure, try to refresh to be sure
                     configurationMessage = "🔄 Checking if configuration was applied..."
                     reloadApplicationFromAPI()
-                    print("⚠️ Response success=false but forcing refresh: \(response.message)")
+                    debugLog("⚠️ Response success=false but forcing refresh: \(response.message)")
                 } else {
                     configurationMessage = "✅ Configuration applied successfully!"
                 }
@@ -2230,13 +2230,13 @@ struct ApplicationDetailView: View {
                 self.isLoadingDeployments = false
                 if case .failure(let error) = completion {
                     self.deploymentsError = error.localizedDescription
-                    print("❌ Failed to load deployments: \(error)")
+                    debugLog("❌ Failed to load deployments: \(error)")
                 }
             },
             receiveValue: { deployments in
                 self.deployments = deployments
                 self.isLoadingDeployments = false
-                print("✅ Loaded \(deployments.count) deployments")
+                debugLog("✅ Loaded \(deployments.count) deployments")
             }
         )
         .store(in: &cancellables)
@@ -2248,7 +2248,7 @@ struct ApplicationDetailView: View {
     private func loadDomains() {
         guard let orgId = organizationId else {
             domainsError = "Organization ID not available"
-            print("❌ Cannot load domains: organizationId is nil")
+            debugLog("❌ Cannot load domains: organizationId is nil")
             return
         }
 
@@ -2265,14 +2265,14 @@ struct ApplicationDetailView: View {
                 isLoadingDomains = false
                 if case .failure(let error) = completion {
                     domainsError = error.localizedDescription
-                    print("❌ Failed to load domains: \(error)")
+                    debugLog("❌ Failed to load domains: \(error)")
                 }
             },
             receiveValue: { loadedDomains in
                 domains = loadedDomains
-                print("✅ Loaded \(domains.count) domains")
+                debugLog("✅ Loaded \(domains.count) domains")
                 if !loadedDomains.isEmpty {
-                    print("🏷️ Domain list: \(loadedDomains.map { $0.fqdn }.joined(separator: ", "))")
+                    debugLog("🏷️ Domain list: \(loadedDomains.map { $0.fqdn }.joined(separator: ", "))")
                 }
             }
         )
@@ -2285,7 +2285,7 @@ struct ApplicationDetailView: View {
 
         guard let orgId = organizationId else {
             domainsError = "Organization ID not available"
-            print("❌ Cannot add domain: organizationId is nil")
+            debugLog("❌ Cannot add domain: organizationId is nil")
             return
         }
 
@@ -2309,11 +2309,11 @@ struct ApplicationDetailView: View {
                 isAddingDomain = false
                 if case .failure(let error) = completion {
                     domainsError = "Failed to add domain: \(error.localizedDescription)"
-                    print("❌ Failed to add domain: \(error)")
+                    debugLog("❌ Failed to add domain: \(error)")
                 }
             },
             receiveValue: { _ in
-                print("✅ Domain added successfully")
+                debugLog("✅ Domain added successfully")
                 newDomainName = ""
                 showingAddDomain = false
                 // Reload domains to show the new one
@@ -2327,18 +2327,18 @@ struct ApplicationDetailView: View {
     private func removeDomain(_ domain: String) {
         guard let orgId = organizationId else {
             domainsError = "Organization ID not available"
-            print("❌ Cannot remove domain: organizationId is nil")
+            debugLog("❌ Cannot remove domain: organizationId is nil")
             return
         }
 
         // CRITICAL: Try deleting with the slash if the domain has one
         // The API might expect the exact FQDN as returned, including trailing slash
         let cleanDomain = domain // DON'T remove trailing slash
-        print("🗑️ Attempting to remove domain: '\(domain)' (cleaned: '\(cleanDomain)') from app \(application.id)")
-        print("🔗 DELETE URL will be: https://api.clever-cloud.com/v2/organisations/\(orgId)/applications/\(application.id)/vhosts/\(cleanDomain)")
+        debugLog("🗑️ Attempting to remove domain: '\(domain)' (cleaned: '\(cleanDomain)') from app \(application.id)")
+        debugLog("🔗 DELETE URL will be: https://api.clever-cloud.com/v2/organisations/\(orgId)/applications/\(application.id)/vhosts/\(cleanDomain)")
 
         // Log current domains before deletion
-        print("📋 Current domains before deletion: \(domains.map { $0.fqdn }.joined(separator: ", "))")
+        debugLog("📋 Current domains before deletion: \(domains.map { $0.fqdn }.joined(separator: ", "))")
 
         isDeletingDomain = true
         domainsError = nil
@@ -2354,22 +2354,22 @@ struct ApplicationDetailView: View {
                 isDeletingDomain = false
                 if case .failure(let error) = completion {
                     domainsError = "Failed to remove domain: \(error.localizedDescription)"
-                    print("❌ Failed to remove domain: \(error)")
-                    print("🔍 Error details: \(error)")
+                    debugLog("❌ Failed to remove domain: \(error)")
+                    debugLog("🔍 Error details: \(error)")
                 }
             },
             receiveValue: { response in
-                print("✅ Domain deletion API returned success")
-                print("🔍 Response type: \(type(of: response))")
+                debugLog("✅ Domain deletion API returned success")
+                debugLog("🔍 Response type: \(type(of: response))")
 
                 // Wait longer before reloading to ensure server-side consistency
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    print("🔄 Reloading domains after deletion (2s delay)...")
+                    debugLog("🔄 Reloading domains after deletion (2s delay)...")
                     loadDomains()
 
                     // Check again after additional delay to see if it's a consistency issue
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                        print("🔄 Second check - reloading domains after 5s total...")
+                        debugLog("🔄 Second check - reloading domains after 5s total...")
                         loadDomains()
                     }
                 }
@@ -2399,7 +2399,7 @@ struct ApplicationDetailView: View {
     /// Reload application data from API after successful configuration change
     /// This ensures the UI displays the updated flavor information
     private func reloadApplicationFromAPI() {
-        print("🔄 Reloading application data from API to check for changes...")
+        debugLog("🔄 Reloading application data from API to check for changes...")
         
         // Use the applications service to get fresh data from the API
         cleverCloudSDK.applications.getApplication(applicationId: application.id)
@@ -2408,7 +2408,7 @@ struct ApplicationDetailView: View {
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
                         configurationMessage = "⚠️ Configuration may have succeeded but failed to refresh UI: \(error.localizedDescription)"
-                        print("❌ Failed to reload application data: \(error)")
+                        debugLog("❌ Failed to reload application data: \(error)")
                     }
                 },
                 receiveValue: { (updatedApplication: CCApplication) in
@@ -2416,7 +2416,7 @@ struct ApplicationDetailView: View {
                     let oldFlavor = self.currentApplicationFlavor?.name ?? self.application.instance.minFlavor.name
                     let newFlavor = updatedApplication.instance.minFlavor.name
                     
-                    print("🔄 API refresh complete - Old flavor: \(oldFlavor), New flavor: \(newFlavor)")
+                    debugLog("🔄 API refresh complete - Old flavor: \(oldFlavor), New flavor: \(newFlavor)")
                     
                     // 🎯 CRITICAL: Update the APPLICATION OBJECT itself with fresh data
                     // This is the key fix that was missing!
@@ -2428,7 +2428,7 @@ struct ApplicationDetailView: View {
                     self.tempMinInstances = Double(updatedApplication.instance.minInstances)
                     self.tempMaxInstances = Double(updatedApplication.instance.maxInstances)
                     
-                    print("🎯 [CRITICAL FIX] Updated application object AND all local state - New flavor: \(self.currentApplicationFlavor?.name ?? "nil")")
+                    debugLog("🎯 [CRITICAL FIX] Updated application object AND all local state - New flavor: \(self.currentApplicationFlavor?.name ?? "nil")")
                     
                     // Refresh the application state with the new data
                     self.refreshApplicationState()
@@ -2437,11 +2437,11 @@ struct ApplicationDetailView: View {
                         // Configuration was successfully applied!
                         configurationMessage = "✅ Instance type updated! Now showing \(newFlavor.uppercased())"
                         showingInstanceTypePicker = false
-                        print("✅ Configuration change confirmed: \(oldFlavor) → \(newFlavor)")
+                        debugLog("✅ Configuration change confirmed: \(oldFlavor) → \(newFlavor)")
                     } else {
                         // Configuration might still be processing
                         configurationMessage = "⏳ Configuration change may still be processing..."
-                        print("⏳ No change detected yet - may still be processing")
+                        debugLog("⏳ No change detected yet - may still be processing")
                     }
                 }
             )
@@ -2450,7 +2450,7 @@ struct ApplicationDetailView: View {
     
     /// Force refresh from API every time the view appears - NO MORE CACHE ISSUES!
     @MainActor private func forceRefreshFromAPI() async {
-        print("🔄 [ApplicationDetailView] FORCE REFRESH from API - Getting fresh data...")
+        debugLog("🔄 [ApplicationDetailView] FORCE REFRESH from API - Getting fresh data...")
         
         // Reset loading states
         isLoading = true
@@ -2501,7 +2501,7 @@ struct ApplicationDetailView: View {
                     }
                 },
                 receiveValue: { _ in
-                    print("✅ Application '\(application.name)' destroyed successfully")
+                    debugLog("✅ Application '\(application.name)' destroyed successfully")
                     
                     // Send notification to parent to refresh and dismiss
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

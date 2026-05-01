@@ -965,7 +965,7 @@ struct AddonDetailView: View {
     private func loadEnvironmentVariables() {
         // First check if env vars are already in the addon object
         if let envVars = addon.env, !envVars.isEmpty {
-            print("✅ Using environment variables from addon object: \(envVars.count) variables")
+            debugLog("✅ Using environment variables from addon object: \(envVars.count) variables")
             self.environmentVariables = envVars
             self.isLoadingEnvironment = false
             return
@@ -974,8 +974,8 @@ struct AddonDetailView: View {
         // If not, try to load from API
         // Try using realId if available, otherwise use regular id
         let addonIdToUse = addon.realId ?? addon.id
-        print("🔍 Loading env vars for addon: \(addon.name)")
-        print("🔍 Using addon ID: \(addonIdToUse) (realId: \(addon.realId ?? "nil"), id: \(addon.id))")
+        debugLog("🔍 Loading env vars for addon: \(addon.name)")
+        debugLog("🔍 Using addon ID: \(addonIdToUse) (realId: \(addon.realId ?? "nil"), id: \(addon.id))")
         
         cleverCloudSDK.addons.getAddonEnvironmentVariables(
             addonId: addonIdToUse,
@@ -985,16 +985,16 @@ struct AddonDetailView: View {
         .sink(
             receiveCompletion: { completion in
                 if case .failure(let error) = completion {
-                    print("❌ Failed to load environment variables: \(error)")
-                    print("❌ Error details: \(error.localizedDescription)")
-                    print("❌ Addon ID: \(self.addon.id)")
-                    print("❌ Organization ID: \(self.organizationId ?? "nil")")
+                    debugLog("❌ Failed to load environment variables: \(error)")
+                    debugLog("❌ Error details: \(error.localizedDescription)")
+                    debugLog("❌ Addon ID: \(self.addon.id)")
+                    debugLog("❌ Organization ID: \(self.organizationId ?? "nil")")
                     self.errorMessage = "Failed to load environment variables: \(error.localizedDescription)"
                 }
                 self.isLoadingEnvironment = false
             },
             receiveValue: { variables in
-                print("✅ Loaded \(variables.count) environment variables for addon")
+                debugLog("✅ Loaded \(variables.count) environment variables for addon")
                 self.environmentVariables = variables
             }
         )
@@ -1010,13 +1010,13 @@ struct AddonDetailView: View {
         .sink(
             receiveCompletion: { completion in
                 if case .failure(let error) = completion {
-                    print("⚠️ Failed to load SSO data: \(error)")
+                    debugLog("⚠️ Failed to load SSO data: \(error)")
                     // Not critical, SSO might not be available for all add-ons
                 }
                 self.isLoadingSSO = false
             },
             receiveValue: { ssoData in
-                print("✅ Loaded SSO data")
+                debugLog("✅ Loaded SSO data")
                 self.ssoData = ssoData
             }
         )
@@ -1075,7 +1075,7 @@ struct AddonDetailView: View {
         .sink(
             receiveCompletion: { completion in
                 if case .failure(let error) = completion {
-                    print("❌ Failed to load logs: \(error)")
+                    debugLog("❌ Failed to load logs: \(error)")
                     self.logsError = error.localizedDescription
                 }
                 self.isLoadingLogs = false
@@ -1088,7 +1088,7 @@ struct AddonDetailView: View {
                 // Prepend new logs and cap the rolling buffer (oldest drop off)
                 self.logs = (uniqueNewLogs + self.logs).prefix(maxLogsBufferSize).map { $0 }
                 
-                print("✅ Loaded \(newLogs.count) logs (\(uniqueNewLogs.count) new)")
+                debugLog("✅ Loaded \(newLogs.count) logs (\(uniqueNewLogs.count) new)")
             }
         )
         .store(in: &cancellables)
@@ -1149,7 +1149,7 @@ struct AddonDetailView: View {
                     }
                 },
                 receiveValue: { _ in
-                    print("✅ Add-on '\(addon.name)' destroyed successfully")
+                    debugLog("✅ Add-on '\(addon.name)' destroyed successfully")
                 }
             )
             .store(in: &cancellables)

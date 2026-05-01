@@ -158,7 +158,7 @@ public final class RemoteLogger: @unchecked Sendable {
         if configuration?.enableConsoleOutput ?? true {
             let emoji = levelEmoji(for: level)
             let fileName = URL(fileURLWithPath: file).lastPathComponent
-            print("\(emoji) [\(fileName):\(line)] \(function) - \(message)")
+            debugLog("\(emoji) [\(fileName):\(line)] \(function) - \(message)")
         }
         
         // Skip if not configured
@@ -315,7 +315,7 @@ public final class RemoteLogger: @unchecked Sendable {
         // 🚫 DISABLED: Remote logging to log-ios.fredalix.com has been disabled
         // Logs will only be printed to console, not sent to remote server
         if config.enableConsoleOutput {
-            print("🚫 RemoteLogger: Remote logging disabled - \(logs.count) logs NOT sent to server")
+            debugLog("🚫 RemoteLogger: Remote logging disabled - \(logs.count) logs NOT sent to server")
         }
         return
         
@@ -339,7 +339,7 @@ public final class RemoteLogger: @unchecked Sendable {
             URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
                 if let error = error {
                     if config.enableConsoleOutput {
-                        print("❌ RemoteLogger: Failed to send logs - \(error.localizedDescription)")
+                        debugLog("❌ RemoteLogger: Failed to send logs - \(error.localizedDescription)")
                     }
                     self?.handleFailedBatch(logs)
                     return
@@ -349,15 +349,15 @@ public final class RemoteLogger: @unchecked Sendable {
                     switch httpResponse.statusCode {
                     case 200...299:
                         if config.enableConsoleOutput {
-                            print("✅ RemoteLogger: Successfully sent \(logs.count) logs")
+                            debugLog("✅ RemoteLogger: Successfully sent \(logs.count) logs")
                         }
                     case 401:
-                        print("❌ RemoteLogger: Authentication failed. Check your auth token.")
+                        debugLog("❌ RemoteLogger: Authentication failed. Check your auth token.")
                     case 429:
-                        print("⚠️ RemoteLogger: Rate limit exceeded. Will retry later.")
+                        debugLog("⚠️ RemoteLogger: Rate limit exceeded. Will retry later.")
                         self?.handleFailedBatch(logs)
                     default:
-                        print("❌ RemoteLogger: Server returned status \(httpResponse.statusCode)")
+                        debugLog("❌ RemoteLogger: Server returned status \(httpResponse.statusCode)")
                         self?.handleFailedBatch(logs)
                     }
                 }
@@ -365,7 +365,7 @@ public final class RemoteLogger: @unchecked Sendable {
             
         } catch {
             if config.enableConsoleOutput {
-                print("❌ RemoteLogger: Failed to encode logs - \(error.localizedDescription)")
+                debugLog("❌ RemoteLogger: Failed to encode logs - \(error.localizedDescription)")
             }
             handleFailedBatch(logs)
         }
@@ -397,7 +397,7 @@ public final class RemoteLogger: @unchecked Sendable {
             try data.write(to: logFilePath)
             logBuffer.removeAll()
         } catch {
-            print("❌ RemoteLogger: Failed to persist logs - \(error.localizedDescription)")
+            debugLog("❌ RemoteLogger: Failed to persist logs - \(error.localizedDescription)")
         }
     }
     
@@ -416,7 +416,7 @@ public final class RemoteLogger: @unchecked Sendable {
             logBuffer.append(contentsOf: logs)
             try FileManager.default.removeItem(at: logFilePath)
         } catch {
-            print("❌ RemoteLogger: Failed to load persisted logs - \(error.localizedDescription)")
+            debugLog("❌ RemoteLogger: Failed to load persisted logs - \(error.localizedDescription)")
         }
     }
     

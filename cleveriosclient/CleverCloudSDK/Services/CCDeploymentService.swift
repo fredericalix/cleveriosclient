@@ -27,7 +27,7 @@ public class CCDeploymentService: ObservableObject {
         organizationId: String? = nil,
         filter: CCDeploymentFilter? = nil
     ) -> AnyPublisher<[CCDeployment], CCError> {
-        print("🚀 CCDeploymentService.getDeployments() called for app: \(applicationId)")
+        debugLog("🚀 CCDeploymentService.getDeployments() called for app: \(applicationId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -76,7 +76,7 @@ public class CCDeploymentService: ObservableObject {
             .tryMap { data in
                 // Log raw response for debugging
                 if let jsonString = String(data: data, encoding: .utf8) {
-                    print("🔍 [CCDeploymentService] Raw deployments response: \(jsonString.prefix(500))...")
+                    debugLog("🔍 [CCDeploymentService] Raw deployments response: \(jsonString.prefix(500))...")
                 }
 
                 // Try to decode the response
@@ -104,7 +104,7 @@ public class CCDeploymentService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("🔍 CCDeploymentService.getDeployment() called for deployment: \(deploymentId)")
+        debugLog("🔍 CCDeploymentService.getDeployment() called for deployment: \(deploymentId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -127,7 +127,7 @@ public class CCDeploymentService: ObservableObject {
         deployment: CCDeploymentCreate,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("🚀 CCDeploymentService.createDeployment() called for app: \(applicationId)")
+        debugLog("🚀 CCDeploymentService.createDeployment() called for app: \(applicationId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -152,7 +152,7 @@ public class CCDeploymentService: ObservableObject {
         organizationId: String? = nil,
         cancellation: CCDeploymentCancel? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
-        print("🛑 CCDeploymentService.cancelDeployment() called for deployment: \(deploymentId)")
+        debugLog("🛑 CCDeploymentService.cancelDeployment() called for deployment: \(deploymentId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -182,7 +182,7 @@ public class CCDeploymentService: ObservableObject {
         since: Date? = nil,
         limit: Int? = nil
     ) -> AnyPublisher<[CCDeploymentLog], CCError> {
-        print("📄 CCDeploymentService.getDeploymentLogs() called for deployment: \(deploymentId)")
+        debugLog("📄 CCDeploymentService.getDeploymentLogs() called for deployment: \(deploymentId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -214,7 +214,7 @@ public class CCDeploymentService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeploymentLog, CCError> {
-        print("📡 CCDeploymentService.streamDeploymentLogs() called for deployment: \(deploymentId)")
+        debugLog("📡 CCDeploymentService.streamDeploymentLogs() called for deployment: \(deploymentId)")
         
         // Note: This would typically use Server-Sent Events (SSE) or WebSocket
         // For now, we'll use polling as a fallback implementation
@@ -246,7 +246,7 @@ public class CCDeploymentService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("🔄 CCDeploymentService.restartApplication() called for app: \(applicationId)")
+        debugLog("🔄 CCDeploymentService.restartApplication() called for app: \(applicationId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -267,7 +267,7 @@ public class CCDeploymentService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("🔁 CCDeploymentService.redeployApplication() called for app: \(applicationId)")
+        debugLog("🔁 CCDeploymentService.redeployApplication() called for app: \(applicationId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -288,7 +288,7 @@ public class CCDeploymentService: ObservableObject {
         applicationId: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("⏹️ CCDeploymentService.stopApplication() called for app: \(applicationId)")
+        debugLog("⏹️ CCDeploymentService.stopApplication() called for app: \(applicationId)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -315,7 +315,7 @@ public class CCDeploymentService: ObservableObject {
         branch: String? = nil,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("📦 CCDeploymentService.deployFromCommit() called for app: \(applicationId), commit: \(commit)")
+        debugLog("📦 CCDeploymentService.deployFromCommit() called for app: \(applicationId), commit: \(commit)")
         
         let deployment = CCDeploymentCreate(
             commit: commit,
@@ -340,7 +340,7 @@ public class CCDeploymentService: ObservableObject {
         branch: String,
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("🌿 CCDeploymentService.deployFromBranch() called for app: \(applicationId), branch: \(branch)")
+        debugLog("🌿 CCDeploymentService.deployFromBranch() called for app: \(applicationId), branch: \(branch)")
         
         let deployment = CCDeploymentCreate(branch: branch)
         
@@ -364,7 +364,7 @@ public class CCDeploymentService: ObservableObject {
         period: String = "30d",
         organizationId: String? = nil
     ) -> AnyPublisher<CCDeploymentStats, CCError> {
-        print("📊 CCDeploymentService.getDeploymentStats() called for app: \(applicationId), period: \(period)")
+        debugLog("📊 CCDeploymentService.getDeploymentStats() called for app: \(applicationId), period: \(period)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -385,7 +385,7 @@ public class CCDeploymentService: ObservableObject {
     public func getActiveDeployments(
         organizationId: String? = nil
     ) -> AnyPublisher<[CCDeployment], CCError> {
-        print("⚡ CCDeploymentService.getActiveDeployments() called")
+        debugLog("⚡ CCDeploymentService.getActiveDeployments() called")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -406,7 +406,7 @@ public class CCDeploymentService: ObservableObject {
         limit: Int = 20,
         organizationId: String? = nil
     ) -> AnyPublisher<[CCDeployment], CCError> {
-        print("🕐 CCDeploymentService.getRecentDeployments() called with limit: \(limit)")
+        debugLog("🕐 CCDeploymentService.getRecentDeployments() called with limit: \(limit)")
         
         let endpoint: String
         if let orgId = organizationId {
@@ -434,7 +434,7 @@ public class CCDeploymentService: ObservableObject {
         organizationId: String? = nil,
         refreshInterval: TimeInterval = 5.0
     ) -> AnyPublisher<CCDeployment, CCError> {
-        print("👀 CCDeploymentService.monitorDeployment() called for deployment: \(deploymentId)")
+        debugLog("👀 CCDeploymentService.monitorDeployment() called for deployment: \(deploymentId)")
         
         return Timer.publish(every: refreshInterval, on: .main, in: .common)
             .autoconnect()
@@ -461,7 +461,7 @@ public class CCDeploymentService: ObservableObject {
         organizationId: String? = nil,
         filter: CCDeploymentFilter? = nil
     ) -> AnyPublisher<[CCDeploymentWithApp], CCError> {
-        print("🔗 CCDeploymentService.getDeploymentsWithApplicationInfo() called for app: \(applicationId)")
+        debugLog("🔗 CCDeploymentService.getDeploymentsWithApplicationInfo() called for app: \(applicationId)")
         
         return getDeployments(
             applicationId: applicationId,

@@ -292,7 +292,7 @@ struct ApplicationLogsView: View {
                 isLoadingLogs = false
                 if case .failure(let error) = completion {
                     logsError = error.localizedDescription
-                    print("❌ Failed to load application logs: \(error)")
+                    debugLog("❌ Failed to load application logs: \(error)")
                 }
             },
             receiveValue: { newLogs in
@@ -313,7 +313,7 @@ struct ApplicationLogsView: View {
                     }
                 }
                 let newCount = sinceDate == nil ? newLogs.count : newLogs.filter { !Set(logs.map { $0.timestamp }).contains($0.timestamp) == false }.count
-                print("✅ Loaded \(newLogs.count) application logs (\(logs.count) total)")
+                debugLog("✅ Loaded \(newLogs.count) application logs (\(logs.count) total)")
             }
         )
         .store(in: &cancellables)

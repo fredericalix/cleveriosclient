@@ -166,7 +166,7 @@ final class AppState {
             return
         }
 
-        print("🔄 Setting up intelligent polling system...")
+        debugLog("🔄 Setting up intelligent polling system...")
 
         cleverCloudSDK.events.connectionStatePublisher
             .receive(on: DispatchQueue.main)
@@ -179,14 +179,14 @@ final class AppState {
             .receive(on: DispatchQueue.main)
             .sink { completion in
                 if case .failure(let error) = completion {
-                    print("❌ Events stream error: \(error)")
+                    debugLog("❌ Events stream error: \(error)")
                 }
             } receiveValue: { [weak self] event in
                 self?.handlePlatformEvent(event)
             }
             .store(in: &eventsCancellables)
 
-        print("🔄 Starting intelligent status polling every \(pollingInterval) seconds")
+        debugLog("🔄 Starting intelligent status polling every \(pollingInterval) seconds")
 
         refreshApplicationStatuses()
         cleverCloudSDK.events.connect()
@@ -209,14 +209,14 @@ final class AppState {
         guard pollingTimer != nil || dataRefreshTimer != nil else {
             return
         }
-        print("🛑 Stopping polling system...")
+        debugLog("🛑 Stopping polling system...")
         cleverCloudSDK.events.disconnect()
         eventsCancellables.removeAll()
         pollingTimer?.invalidate()
         pollingTimer = nil
         dataRefreshTimer?.invalidate()
         dataRefreshTimer = nil
-        print("⏹️ Stopped intelligent polling")
+        debugLog("⏹️ Stopped intelligent polling")
         isPollingActive = false
         eventSystemMode = "Disconnected"
     }
@@ -225,7 +225,7 @@ final class AppState {
     func refreshApplicationStatuses() {
         let apps = applicationsProvider?() ?? applications
         guard !apps.isEmpty else { return }
-        print("🔄 Refreshing application statuses...")
+        debugLog("🔄 Refreshing application statuses...")
         loadApplicationStatuses(for: apps)
     }
 

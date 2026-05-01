@@ -22,7 +22,7 @@ final class CCDebugLogger {
         let logMessage = "[\(timestamp)] \(message)\n"
         
         // Console output
-        print(logMessage.trimmingCharacters(in: .whitespacesAndNewlines))
+        debugLog(logMessage.trimmingCharacters(in: .whitespacesAndNewlines))
         
         // File output
         if let data = logMessage.data(using: .utf8) {

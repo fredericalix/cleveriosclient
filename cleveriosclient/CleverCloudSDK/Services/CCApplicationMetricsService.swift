@@ -54,9 +54,9 @@ public class CCApplicationMetricsService: ObservableObject {
         period: String = "PT1H"
     ) -> AnyPublisher<CCApplicationMetrics, CCError> {
         
-        print("📊 [CCApplicationMetricsService] Getting metrics for application: \(applicationId)")
-        print("📊 [CCApplicationMetricsService] Organization: \(organizationId), Period: \(period)")
-        print("📊 [CCApplicationMetricsService] ✅ FIXED: Using OAuth 1.0a directly on v4 API (same as official JS SDK)")
+        debugLog("📊 [CCApplicationMetricsService] Getting metrics for application: \(applicationId)")
+        debugLog("📊 [CCApplicationMetricsService] Organization: \(organizationId), Period: \(period)")
+        debugLog("📊 [CCApplicationMetricsService] ✅ FIXED: Using OAuth 1.0a directly on v4 API (same as official JS SDK)")
         
         // Build endpoint with query parameters - Use OAuth 1.0a directly like official JS SDK
         let endpoint = "/stats/organisations/\(organizationId)/resources/\(applicationId)/metrics"
@@ -69,7 +69,7 @@ public class CCApplicationMetricsService: ObservableObject {
         let queryString = urlComponents.query ?? ""
         let fullEndpoint = queryString.isEmpty ? endpoint : "\(endpoint)?\(queryString)"
         
-        print("📊 [CCApplicationMetricsService] OAuth 1.0a request to: \(fullEndpoint)")
+        debugLog("📊 [CCApplicationMetricsService] OAuth 1.0a request to: \(fullEndpoint)")
         
         // Use OAuth 1.0a directly (same as JS SDK) instead of Bearer token
         return httpClient.getRawData(fullEndpoint, apiVersion: .v4)
@@ -110,18 +110,18 @@ public class CCApplicationMetricsService: ObservableObject {
         }
         .handleEvents(
             receiveOutput: { metrics in
-                print("✅ [CCApplicationMetricsService] SUCCESS! Received comprehensive metrics with OAuth 1.0a")
-                print("📊 [CCApplicationMetricsService] CPU: \(metrics.cpuUsageFormatted), Memory: \(metrics.memoryUsageFormatted)")
+                debugLog("✅ [CCApplicationMetricsService] SUCCESS! Received comprehensive metrics with OAuth 1.0a")
+                debugLog("📊 [CCApplicationMetricsService] CPU: \(metrics.cpuUsageFormatted), Memory: \(metrics.memoryUsageFormatted)")
             },
             receiveCompletion: { completion in
                 if case .failure(let error) = completion {
-                    print("❌ [CCApplicationMetricsService] OAuth 1.0a request failed: \(error)")
+                    debugLog("❌ [CCApplicationMetricsService] OAuth 1.0a request failed: \(error)")
                 }
             }
         )
         .catch { error -> AnyPublisher<CCApplicationMetrics, CCError> in
             // Return error instead of mock data
-            print("⚠️ [CCApplicationMetricsService] OAuth 1.0a request failed: \(error)")
+            debugLog("⚠️ [CCApplicationMetricsService] OAuth 1.0a request failed: \(error)")
             return Fail(error: error)
                 .eraseToAnyPublisher()
         }
@@ -145,12 +145,12 @@ public class CCApplicationMetricsService: ObservableObject {
         totalMemoryMB: Double = 512.0
     ) -> AnyPublisher<[CCApplicationMetricPoint], CCError> {
 
-        print("📈 [CCApplicationMetricsService] Getting time series for metric '\(metric.rawValue)'")
-        print("📈 [CCApplicationMetricsService] App: \(applicationId), Interval: \(interval), Span: \(span)")
+        debugLog("📈 [CCApplicationMetricsService] Getting time series for metric '\(metric.rawValue)'")
+        debugLog("📈 [CCApplicationMetricsService] App: \(applicationId), Interval: \(interval), Span: \(span)")
 
         // For network metrics, use Warp10 directly as v4 API doesn't provide them
         if metric == .networkIn || metric == .networkOut {
-            print("📈 [CCApplicationMetricsService] 🔄 Using Warp10 for network metrics")
+            debugLog("📈 [CCApplicationMetricsService] 🔄 Using Warp10 for network metrics")
             return getNetworkMetricsFromWarp10(
                 applicationId: applicationId,
                 organizationId: organizationId,
@@ -160,7 +160,7 @@ public class CCApplicationMetricsService: ObservableObject {
         }
 
         // For CPU and Memory, continue using v4 API which works well
-        print("📈 [CCApplicationMetricsService] ✅ Using v4 API for CPU/Memory metrics")
+        debugLog("📈 [CCApplicationMetricsService] ✅ Using v4 API for CPU/Memory metrics")
 
         // Build endpoint with query parameters - Use same endpoint as getApplicationMetrics
         let endpoint = "/stats/organisations/\(organizationId)/resources/\(applicationId)/metrics"
@@ -176,7 +176,7 @@ public class CCApplicationMetricsService: ObservableObject {
         let queryString = urlComponents.query ?? ""
         let fullEndpoint = queryString.isEmpty ? endpoint : "\(endpoint)?\(queryString)"
 
-        print("📈 [CCApplicationMetricsService] OAuth 1.0a request to: \(fullEndpoint)")
+        debugLog("📈 [CCApplicationMetricsService] OAuth 1.0a request to: \(fullEndpoint)")
 
         return httpClient.getRawData(fullEndpoint, apiVersion: .v4)
             .tryMap { data in
@@ -218,7 +218,7 @@ public class CCApplicationMetricsService: ObservableObject {
         interval: TimeInterval = 30.0
     ) -> AnyPublisher<CCApplicationMetrics, CCError> {
         
-        print("⏱️ [CCApplicationMetricsService] Starting real-time metrics polling (interval: \(interval)s)")
+        debugLog("⏱️ [CCApplicationMetricsService] Starting real-time metrics polling (interval: \(interval)s)")
         
         return Timer.publish(every: interval, on: .main, in: .common)
             .autoconnect()
@@ -258,8 +258,8 @@ public class CCApplicationMetricsService: ObservableObject {
         span: String
     ) -> AnyPublisher<[CCApplicationMetricPoint], CCError> {
 
-        print("🌐 [CCApplicationMetricsService] Fetching network metrics from Warp10")
-        print("🌐 [CCApplicationMetricsService] Metric: \(metric.rawValue), App: \(applicationId)")
+        debugLog("🌐 [CCApplicationMetricsService] Fetching network metrics from Warp10")
+        debugLog("🌐 [CCApplicationMetricsService] Metric: \(metric.rawValue), App: \(applicationId)")
 
         // Convert ISO8601 to Warp10 format
         let warp10Span = convertToWarp10Period(span)
@@ -273,7 +273,7 @@ public class CCApplicationMetricsService: ObservableObject {
                 [ '\(token)' '\(metricName)' { 'app_id' '\(applicationId)' } NOW \(warp10Span) ] FETCH
                 """
 
-                print("🌐 [CCApplicationMetricsService] Executing WarpScript for metric: \(metricName)")
+                debugLog("🌐 [CCApplicationMetricsService] Executing WarpScript for metric: \(metricName)")
 
                 return self.warp10Client.executeWarpScript(warpScript)
                     .tryMap { data in
@@ -303,16 +303,16 @@ public class CCApplicationMetricsService: ObservableObject {
         metricType: MetricType
     ) throws -> [CCApplicationMetricPoint] {
 
-        print("📊 [CCApplicationMetricsService] Parsing Warp10 network response")
+        debugLog("📊 [CCApplicationMetricsService] Parsing Warp10 network response")
 
         // Log raw response for debugging
         if let jsonString = String(data: data, encoding: .utf8) {
-            print("📊 [CCApplicationMetricsService] Warp10 response: \(jsonString.prefix(500))")
+            debugLog("📊 [CCApplicationMetricsService] Warp10 response: \(jsonString.prefix(500))")
         }
 
         // Warp10 returns nested arrays: [[{...}]]
         guard let outerArray = try JSONSerialization.jsonObject(with: data) as? [Any] else {
-            print("❌ [CCApplicationMetricsService] Invalid Warp10 response format - not an array")
+            debugLog("❌ [CCApplicationMetricsService] Invalid Warp10 response format - not an array")
             return []
         }
 
@@ -321,18 +321,18 @@ public class CCApplicationMetricsService: ObservableObject {
         // Process each GTS (GeoTime Series)
         for element in outerArray {
             guard let gtsArray = element as? [[String: Any]] else {
-                print("⚠️ [CCApplicationMetricsService] Skipping non-GTS element")
+                debugLog("⚠️ [CCApplicationMetricsService] Skipping non-GTS element")
                 continue
             }
 
             for gts in gtsArray {
                 guard let className = gts["c"] as? String,
                       let values = gts["v"] as? [[Any]] else {
-                    print("⚠️ [CCApplicationMetricsService] Skipping malformed GTS")
+                    debugLog("⚠️ [CCApplicationMetricsService] Skipping malformed GTS")
                     continue
                 }
 
-                print("📊 [CCApplicationMetricsService] Processing GTS '\(className)' with \(values.count) data points")
+                debugLog("📊 [CCApplicationMetricsService] Processing GTS '\(className)' with \(values.count) data points")
 
                 // Sort values by timestamp ascending (Warp10 may return descending)
                 let sortedValues = values.sorted { a, b in
@@ -401,7 +401,7 @@ public class CCApplicationMetricsService: ObservableObject {
         // Sort by timestamp
         points.sort { $0.timestamp < $1.timestamp }
 
-        print("✅ [CCApplicationMetricsService] Parsed \(points.count) network data points")
+        debugLog("✅ [CCApplicationMetricsService] Parsed \(points.count) network data points")
         return points
     }
 
@@ -436,7 +436,7 @@ public class CCApplicationMetricsService: ObservableObject {
             return "14 d"
         default:
             // Default to 1 hour if unknown format
-            print("⚠️ [CCApplicationMetricsService] Unknown period format: \(iso8601Period), defaulting to 1 h")
+            debugLog("⚠️ [CCApplicationMetricsService] Unknown period format: \(iso8601Period), defaulting to 1 h")
             return "1 h"
         }
     }

@@ -788,14 +788,14 @@ struct ContentView: View {
     // MARK: - Selection Methods
     
     private func selectApplicationDetail(_ app: CCApplication) {
-        print("🎯 [iPad Navigation] Selecting application: \(app.name)")
+        debugLog("🎯 [iPad Navigation] Selecting application: \(app.name)")
         RemoteLogger.shared.info("🎯 [iPad Navigation] Selecting application: \(app.name)")
         
         // Check if we're doing an app-to-app transition
         let isAppToAppTransition = selectedDetailView == .applicationDetail && selectedApplicationForDetail != nil
         
         if isAppToAppTransition {
-            print("🔄 [iPad Navigation] App-to-App transition detected - forcing UI refresh")
+            debugLog("🔄 [iPad Navigation] App-to-App transition detected - forcing UI refresh")
             // Force UI refresh by temporarily resetting state
             selectedDetailView = .dashboard
             selectedApplicationForDetail = nil
@@ -807,7 +807,7 @@ struct ContentView: View {
                     self.selectedApplicationForDetail = app
                     self.selectedDetailView = .applicationDetail
                 }
-                print("🔄 [iPad Navigation] App-to-App transition complete - App: \(app.name)")
+                debugLog("🔄 [iPad Navigation] App-to-App transition complete - App: \(app.name)")
             }
         } else {
             // Normal transition from dashboard/addon to app
@@ -816,12 +816,12 @@ struct ContentView: View {
                 selectedAddonForDetail = nil
                 selectedDetailView = .applicationDetail
             }
-            print("🔄 [iPad Navigation] Normal transition - App: \(app.name)")
+            debugLog("🔄 [iPad Navigation] Normal transition - App: \(app.name)")
         }
     }
     
     private func selectAddonDetail(_ addon: CCAddon) {
-        print("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
+        debugLog("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
         RemoteLogger.shared.info("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
         
         // Update state atomically to avoid conflicts
@@ -835,7 +835,7 @@ struct ContentView: View {
         if isIpad {
             DispatchQueue.main.async {
                 // This ensures the UI refresh happens after the state change
-                print("🔄 [iPad Navigation] State updated - DetailView: \(selectedDetailView), Addon: \(selectedAddonForDetail?.name ?? "nil")")
+                debugLog("🔄 [iPad Navigation] State updated - DetailView: \(selectedDetailView), Addon: \(selectedAddonForDetail?.name ?? "nil")")
             }
         }
     }
@@ -1679,7 +1679,7 @@ struct ContentView: View {
             return
         }
         
-        print("🧪 Testing: getApplication(id: \(firstApp.id))")
+        debugLog("🧪 Testing: getApplication(id: \(firstApp.id))")
         
         cleverCloudSDK.getApplication(id: firstApp.id)
             .receive(on: DispatchQueue.main)
@@ -1688,13 +1688,13 @@ struct ContentView: View {
                     isLoading = false
                     if case .failure(let error) = completion {
                         errorMessage = "getApplication failed: \(error.localizedDescription)"
-                        print("❌ Test Failed: getApplication - \(error)")
+                        debugLog("❌ Test Failed: getApplication - \(error)")
                     } else {
-                        print("✅ Test Passed: getApplication")
+                        debugLog("✅ Test Passed: getApplication")
                     }
                 },
                 receiveValue: { app in
-                    print("✅ Test Result: Retrieved app '\(app.name)' with ID \(app.id)")
+                    debugLog("✅ Test Result: Retrieved app '\(app.name)' with ID \(app.id)")
                 }
             )
             .store(in: &cancellables)
@@ -1702,37 +1702,37 @@ struct ContentView: View {
     
     private func testGetOrgApplications() {
         errorMessage = "Organization apps: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Organization Applications - Feature not yet implemented")
+        debugLog("🧪 Testing: Organization Applications - Feature not yet implemented")
     }
     
     private func testCreateApplication() {
         errorMessage = "Create app: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Create Application - Feature not yet implemented")
+        debugLog("🧪 Testing: Create Application - Feature not yet implemented")
     }
     
     private func testUpdateApplication() {
         errorMessage = "Update app: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Update Application - Feature not yet implemented")
+        debugLog("🧪 Testing: Update Application - Feature not yet implemented")
     }
     
     private func testDeleteApplication() {
         errorMessage = "Delete app: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Delete Application - Feature not yet implemented")
+        debugLog("🧪 Testing: Delete Application - Feature not yet implemented")
     }
     
     private func testDeployApplication() {
         errorMessage = "Deploy app: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Deploy Application - Feature not yet implemented")
+        debugLog("🧪 Testing: Deploy Application - Feature not yet implemented")
     }
     
     private func testApplicationEnvVars() {
         errorMessage = "Env vars: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Environment Variables - Feature not yet implemented")
+        debugLog("🧪 Testing: Environment Variables - Feature not yet implemented")
     }
     
     private func testApplicationInstances() {
         errorMessage = "Instances: This feature will be implemented in Phase 2"
-        print("🧪 Testing: Application Instances - Feature not yet implemented")
+        debugLog("🧪 Testing: Application Instances - Feature not yet implemented")
     }
     
     // MARK: - CCAddonService Test Methods
@@ -1807,7 +1807,7 @@ struct ContentView: View {
     
     private func testCreateAddon() {
         errorMessage = "Create addon: This feature will be implemented next"
-        print("🧪 Testing: Create Add-on - Feature implementation in progress")
+        debugLog("🧪 Testing: Create Add-on - Feature implementation in progress")
     }
     
     private func testGetAddonsForOrganization(_ organization: CCOrganization) {
@@ -1902,20 +1902,20 @@ struct ContentView: View {
             if let prevApp = previousApp {
                 // Try to find the same application in the new data
                 if let newApp = applications.first(where: { $0.id == prevApp.id }) {
-                    print("🔄 [iPad Navigation] Maintaining application selection: \(newApp.name)")
+                    debugLog("🔄 [iPad Navigation] Maintaining application selection: \(newApp.name)")
                     selectApplicationDetail(newApp)
                 } else {
-                    print("🔄 [iPad Navigation] Previous app not found, staying on dashboard")
+                    debugLog("🔄 [iPad Navigation] Previous app not found, staying on dashboard")
                 }
             }
         case .addonDetail:
             if let prevAddon = previousAddon {
                 // Try to find the same addon in the new data
                 if let newAddon = addons.first(where: { $0.id == prevAddon.id }) {
-                    print("🔄 [iPad Navigation] Maintaining addon selection: \(newAddon.name)")
+                    debugLog("🔄 [iPad Navigation] Maintaining addon selection: \(newAddon.name)")
                     selectAddonDetail(newAddon)
                 } else {
-                    print("🔄 [iPad Navigation] Previous addon not found, staying on dashboard")
+                    debugLog("🔄 [iPad Navigation] Previous addon not found, staying on dashboard")
                 }
             }
         case .dashboard:
@@ -1944,7 +1944,7 @@ struct ContentView: View {
     // MARK: - Reset Authentication
     
     private func resetAuthentication() {
-        print("🎯 Reset Authentication")
+        debugLog("🎯 Reset Authentication")
         cleverCloudSDK.resetAuthentication()
         errorMessage = "Authentication reset. Please log in again."
         isLoading = false
