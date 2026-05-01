@@ -40,6 +40,11 @@ struct AddonDetailView: View {
     @State private var isPaused = false
     @State private var autoScroll = true
     @State private var logsTimer: Timer?
+
+    /// Number of entries fetched on the very first load (recent logs only).
+    private let initialLogsLimit = 50
+    /// Hard cap on the rolling buffer; live-tail keeps appending up to this size, oldest drop off.
+    private let maxLogsBufferSize = 250
     
     @State private var cancellables = Set<AnyCancellable>()
 
@@ -1063,7 +1068,7 @@ struct AddonDetailView: View {
         cleverCloudSDK.addons.getAddonLogs(
             addonId: addon.id,
             organizationId: organizationId,
-            limit: 400,
+            limit: initialLogsLimit,
             order: "desc"
         )
         .receive(on: DispatchQueue.main)
@@ -1080,8 +1085,8 @@ struct AddonDetailView: View {
                 let existingIds = Set(self.logs.map { $0.id })
                 let uniqueNewLogs = newLogs.filter { !existingIds.contains($0.id) }
                 
-                // Prepend new logs and limit total to 500
-                self.logs = (uniqueNewLogs + self.logs).prefix(500).map { $0 }
+                // Prepend new logs and cap the rolling buffer (oldest drop off)
+                self.logs = (uniqueNewLogs + self.logs).prefix(maxLogsBufferSize).map { $0 }
                 
                 print("✅ Loaded \(newLogs.count) logs (\(uniqueNewLogs.count) new)")
             }
