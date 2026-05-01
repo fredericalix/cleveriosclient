@@ -20,6 +20,11 @@ struct ApplicationLogsView: View {
     @State private var cancellables = Set<AnyCancellable>()
     @State private var scrollViewProxy: ScrollViewProxy?
 
+    /// Number of entries fetched on the very first load (recent logs only).
+    private let initialLogsLimit = 50
+    /// Hard cap on the rolling buffer; live-tail keeps appending up to this size, oldest drop off.
+    private let maxLogsBufferSize = 250
+
     // Computed filtered logs - sorted chronologically (oldest first, newest at bottom)
     private var filteredLogs: [CCLogEntry] {
         logs.filter { log in
@@ -33,20 +38,8 @@ struct ApplicationLogsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Close button header
-            HStack {
-                Text(application.name)
-                    .font(.headline)
-                Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
+            // Header: title + close (or selection actions)
+            headerBar
 
             // Toolbar
             logsToolbar
@@ -142,8 +135,30 @@ struct ApplicationLogsView: View {
         }
     }
     
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            Text(application.name)
+                .font(.headline)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+            .accessibilityLabel("Close logs")
+        }
+        .padding(.horizontal)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
     // MARK: - Toolbar
-    
+
     private var logsToolbar: some View {
         VStack(spacing: 12) {
             // Search bar
@@ -257,7 +272,7 @@ struct ApplicationLogsView: View {
     }
     
     // MARK: - Helper Methods
-    
+
     private func loadLogs() {
         isLoadingLogs = logs.isEmpty
         logsError = nil
@@ -268,7 +283,7 @@ struct ApplicationLogsView: View {
         cleverCloudSDK.applications.getApplicationLogs(
             applicationId: application.id,
             organizationId: organizationId,
-            limit: 400,
+            limit: initialLogsLimit,
             since: sinceDate
         )
         .receive(on: DispatchQueue.main)
@@ -290,10 +305,10 @@ struct ApplicationLogsView: View {
                     let uniqueNew = newLogs.filter { !existingTimestamps.contains($0.timestamp) }
                     if !uniqueNew.isEmpty {
                         logs.append(contentsOf: uniqueNew)
-                        // Keep only last 400
-                        if logs.count > 400 {
+                        // Keep only the last `maxLogsBufferSize` entries (live-tail rolling cap)
+                        if logs.count > maxLogsBufferSize {
                             let sorted = logs.sorted { $0.timestamp < $1.timestamp }
-                            logs = Array(sorted.suffix(400))
+                            logs = Array(sorted.suffix(maxLogsBufferSize))
                         }
                     }
                 }

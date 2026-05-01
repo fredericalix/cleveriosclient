@@ -43,7 +43,6 @@ struct ApplicationDetailView: View {
     @State private var lastStatusUpdate = Date()
     
     // Logs-related state
-    @State private var selectedDeploymentSection = 0 // 0: Deployments, 1: Logs
     @State private var logs: [CCLogEntry] = []
     @State private var isLoadingLogs = false
     @State private var logsError: String?
@@ -153,29 +152,37 @@ struct ApplicationDetailView: View {
                     }
                     .tag(2)
                 
-                // Tab 4: Deployments & Logs (Priority 4)
+                // Tab 4: Deployments
                 deploymentsTab
                     .tabItem {
                         Image(systemName: "arrow.up.circle")
                         Text("Deployments")
                     }
                     .tag(3)
-                
-                // Tab 5: Domains & Networking (Priority 5)
+
+                // Tab 5: Logs
+                logsTab
+                    .tabItem {
+                        Image(systemName: "doc.text.magnifyingglass")
+                        Text("Logs")
+                    }
+                    .tag(4)
+
+                // Tab 6: Domains & Networking
                 domainsTab
                     .tabItem {
                         Image(systemName: "globe")
                         Text("Domains")
                     }
-                    .tag(4)
-                
-                // Tab 6: Advanced Settings (Priority 6)
+                    .tag(5)
+
+                // Tab 7: Advanced Settings
                 advancedTab
                     .tabItem {
                         Image(systemName: "slider.horizontal.3")
                         Text("Advanced")
                     }
-                    .tag(5)
+                    .tag(6)
             }
         }
         .onAppear {
@@ -1028,48 +1035,46 @@ struct ApplicationDetailView: View {
         }
     }
 
+    private var deploymentsTab: some View {
+        deploymentHistoryView
+    }
+
     @State private var showingLogsFullScreen = false
 
-    private var deploymentsTab: some View {
-        VStack(spacing: 0) {
-            // Segmented Control
-            Picker("Section", selection: $selectedDeploymentSection) {
-                Text("Deployments").tag(0)
-                Text("Logs").tag(1)
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding()
+    private var logsTab: some View {
+        VStack(spacing: 20) {
+            Spacer()
 
-            // Content based on selection
-            if selectedDeploymentSection == 0 {
-                // Deployments view
-                deploymentHistoryView
-            } else {
-                // Logs button - opens full screen
-                VStack(spacing: 16) {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 50))
-                        .foregroundColor(.blue)
-                    Text("View Application Logs")
-                        .font(.title3)
-                        .fontWeight(.medium)
-                    Text("\(logs.count) logs loaded")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Button(action: { showingLogsFullScreen = true }) {
-                        Label("Open Logs", systemImage: "arrow.up.left.and.arrow.down.right")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 60))
+                .foregroundColor(.blue)
+
+            VStack(spacing: 6) {
+                Text("Application Logs")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Text("Live tail • up to 250 entries")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
+
+            Button {
+                showingLogsFullScreen = true
+            } label: {
+                Label("Display Logs", systemImage: "arrow.up.left.and.arrow.down.right")
+                    .font(.headline)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .fullScreenCover(isPresented: $showingLogsFullScreen) {
             ApplicationLogsView(
                 application: application,
@@ -1086,7 +1091,7 @@ struct ApplicationDetailView: View {
             )
         }
     }
-    
+
     private var domainsTab: some View {
         VStack(spacing: 0) {
             // Header with Add Button
