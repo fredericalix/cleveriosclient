@@ -24,15 +24,15 @@ public class CCApplicationService: ObservableObject {
     /// Get all applications for the current user
     /// - Returns: Publisher with array of CCApplication objects
     public func getApplications() -> AnyPublisher<[CCApplication], CCError> {
-        print("🚀 CCApplicationService.getApplications() called")
+        debugLog("🚀 CCApplicationService.getApplications() called")
         return httpClient.get("/self/applications", apiVersion: .v2)
     }
     
     /// Get all applications (status computation will be done separately when needed)
     /// - Returns: Publisher with array of CCApplication objects 
     public func getApplicationsWithStates() -> AnyPublisher<[CCApplication], CCError> {
-        print("🚀 CCApplicationService.getApplicationsWithStates() called")
-        print("📝 Note: Application status should be computed separately using getApplicationStatus()")
+        debugLog("🚀 CCApplicationService.getApplicationsWithStates() called")
+        debugLog("📝 Note: Application status should be computed separately using getApplicationStatus()")
         
         return getApplications()
     }
@@ -48,8 +48,8 @@ public class CCApplicationService: ObservableObject {
     /// - Parameter organizationId: The organization ID
     /// - Returns: Publisher with array of CCApplication objects
     public func getApplicationsWithStates(forOrganization organizationId: String) -> AnyPublisher<[CCApplication], CCError> {
-        print("🚀 CCApplicationService.getApplicationsWithStates(forOrganization: \(organizationId)) called")
-        print("📝 Note: Application status should be computed separately using getApplicationStatus()")
+        debugLog("🚀 CCApplicationService.getApplicationsWithStates(forOrganization: \(organizationId)) called")
+        debugLog("📝 Note: Application status should be computed separately using getApplicationStatus()")
         
         return getApplications(forOrganization: organizationId)
     }
@@ -137,7 +137,7 @@ public class CCApplicationService: ObservableObject {
     /// - Parameter applicationId: The application ID
     /// - Returns: Publisher with array of application instances
     public func getApplicationInstances(applicationId: String) -> AnyPublisher<[CCApplicationInstance], CCError> {
-        print("🚀 CCApplicationService.getApplicationInstances(\(applicationId)) called")
+        debugLog("🚀 CCApplicationService.getApplicationInstances(\(applicationId)) called")
         
         return httpClient.get("/self/applications/\(applicationId)/instances", apiVersion: .v2)
             .eraseToAnyPublisher()
@@ -149,7 +149,7 @@ public class CCApplicationService: ObservableObject {
     ///   - organizationId: The organization ID
     /// - Returns: Publisher with array of application instances
     public func getApplicationInstances(applicationId: String, organizationId: String) -> AnyPublisher<[CCApplicationInstance], CCError> {
-        print("🚀 CCApplicationService.getApplicationInstances(\(applicationId), org: \(organizationId)) called")
+        debugLog("🚀 CCApplicationService.getApplicationInstances(\(applicationId), org: \(organizationId)) called")
         
         return httpClient.get("/organisations/\(organizationId)/applications/\(applicationId)/instances", apiVersion: .v2)
             .eraseToAnyPublisher()

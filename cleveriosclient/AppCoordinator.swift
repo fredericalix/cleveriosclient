@@ -112,7 +112,7 @@ final class AppCoordinator {
     /// Déconnecte l'utilisateur et nettoie tous les états
     func logout() {
         if configuration.enableDebugLogging {
-            print("🔐 Starting user logout process...")
+            debugLog("🔐 Starting user logout process...")
         }
         
         // Déconnexion via le service OAuth (supprime les credentials du Keychain)
@@ -127,7 +127,7 @@ final class AppCoordinator {
         _configuration.clearTokens()
         
         if configuration.enableDebugLogging {
-            print("✅ User logout completed successfully")
+            debugLog("✅ User logout completed successfully")
         }
     }
     
@@ -149,7 +149,7 @@ final class AppCoordinator {
     /// Force une vérification immédiate de l'état d'authentification (appelé après login)
     func forceAuthenticationCheck() {
         if configuration.enableDebugLogging {
-            print("🔍 Forcing immediate authentication check...")
+            debugLog("🔍 Forcing immediate authentication check...")
         }
         
         // Recharger les tokens depuis le Keychain
@@ -169,14 +169,14 @@ final class AppCoordinator {
             _configuration.updateTokens(accessToken: credentials.token, accessTokenSecret: credentials.secret)
             
             if _configuration.enableDebugLogging {
-                print("🔑 Tokens loaded from Keychain")
-                print("   Access Token: \(credentials.token.prefix(10))...")
-                print("   Token Secret: \(credentials.secret.prefix(10))...")
-                print("   isAuthenticated: \(_configuration.isAuthenticated)")
+                debugLog("🔑 Tokens loaded from Keychain")
+                debugLog("   Access Token: \(credentials.token.prefix(10))...")
+                debugLog("   Token Secret: \(credentials.secret.prefix(10))...")
+                debugLog("   isAuthenticated: \(_configuration.isAuthenticated)")
             }
         } else {
             if _configuration.enableDebugLogging {
-                print("📱 No tokens found in Keychain")
+                debugLog("📱 No tokens found in Keychain")
             }
         }
     }
@@ -217,7 +217,7 @@ final class AppCoordinator {
             }
             
             if configuration.enableDebugLogging {
-                print("🔄 Authentication state changed: \(previousAuthState) -> \(currentAuthState)")
+                debugLog("🔄 Authentication state changed: \(previousAuthState) -> \(currentAuthState)")
             }
         }
         // Sinon, ne rien faire - évite les vérifications inutiles du keychain
@@ -230,7 +230,7 @@ final class AppCoordinator {
         }
         
         if configuration.enableDebugLogging {
-            print("🎉 Authentication successful - user now logged in!")
+            debugLog("🎉 Authentication successful - user now logged in!")
         }
     }
     
@@ -239,7 +239,7 @@ final class AppCoordinator {
         currentUser = nil
         
         if configuration.enableDebugLogging {
-            print("🔐 User logged out or authentication failed")
+            debugLog("🔐 User logged out or authentication failed")
         }
     }
     
@@ -250,7 +250,7 @@ final class AppCoordinator {
         currentUser = "Clever Cloud User"
         
         if configuration.enableDebugLogging {
-            print("✅ User info loaded: \(currentUser ?? "Unknown")")
+            debugLog("✅ User info loaded: \(currentUser ?? "Unknown")")
         }
     }
 } 

@@ -32,14 +32,14 @@ public class CCWarp10Client: ObservableObject {
         // Check cache first (tokens valid for 5 days)
         if let cached = tokenCache[organizationId],
            cached.expiry > Date() {
-            print("🎫 [CCWarp10Client] Using cached token for org: \(organizationId)")
+            debugLog("🎫 [CCWarp10Client] Using cached token for org: \(organizationId)")
             return Just(cached.token)
                 .setFailureType(to: CCError.self)
                 .eraseToAnyPublisher()
         }
         
-        print("🎫 [CCWarp10Client] Fetching new Warp10 token for org: \(organizationId)")
-        print("🔍 [CCWarp10Client] Using endpoint discovered in SDK JS: /v2/metrics/read/{orgaId}")
+        debugLog("🎫 [CCWarp10Client] Fetching new Warp10 token for org: \(organizationId)")
+        debugLog("🔍 [CCWarp10Client] Using endpoint discovered in SDK JS: /v2/metrics/read/{orgaId}")
         
         // Use existing v2 API endpoint for metrics token (same as JS SDK)
         // Note: Don't include /v2 prefix since apiVersion: .v2 adds it automatically
@@ -55,13 +55,13 @@ public class CCWarp10Client: ObservableObject {
                 let expiryDate = Date().addingTimeInterval(4.5 * 24 * 60 * 60)
                 self.tokenCache[organizationId] = (token: cleanToken, expiry: expiryDate)
                 
-                print("✅ [CCWarp10Client] Cached new Warp10 token for org: \(organizationId) (\(cleanToken.prefix(8))...[\(cleanToken.count) chars])")
+                debugLog("✅ [CCWarp10Client] Cached new Warp10 token for org: \(organizationId) (\(cleanToken.prefix(8))...[\(cleanToken.count) chars])")
                 return cleanToken
             }
             .handleEvents(
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        print("❌ [CCWarp10Client] Failed to get Warp10 token from \(endpoint): \(error)")
+                        debugLog("❌ [CCWarp10Client] Failed to get Warp10 token from \(endpoint): \(error)")
                     }
                 }
             )
@@ -75,7 +75,7 @@ public class CCWarp10Client: ObservableObject {
     /// - Returns: Publisher with raw Warp10 response data
     public func executeWarpScript(_ script: String) -> AnyPublisher<Data, CCError> {
         
-        print("📝 [CCWarp10Client] Executing WarpScript (\(script.count) chars)")
+        debugLog("📝 [CCWarp10Client] Executing WarpScript (\(script.count) chars)")
         
         let url = URL(string: "\(warp10Endpoint)/exec")!
         var request = URLRequest(url: url)
@@ -90,11 +90,11 @@ public class CCWarp10Client: ObservableObject {
             }
             .handleEvents(
                 receiveOutput: { data in
-                    print("✅ [CCWarp10Client] WarpScript executed successfully, received \(data.count) bytes")
+                    debugLog("✅ [CCWarp10Client] WarpScript executed successfully, received \(data.count) bytes")
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        print("❌ [CCWarp10Client] WarpScript execution failed: \(error)")
+                        debugLog("❌ [CCWarp10Client] WarpScript execution failed: \(error)")
                     }
                 }
             )
@@ -216,7 +216,7 @@ public class CCWarp10Client: ObservableObject {
     /// Create WarpScript for CPU metrics
     /// Real CPU metrics are: cpu.usage_user, cpu.usage_system, cpu.usage_idle, etc.
     private func createCPUWarpScript(token: String, applicationId: String, span: String) -> String {
-        print("🧪 [CCWarp10Client] Creating CPU WarpScript for app: \(applicationId), span: \(span)")
+        debugLog("🧪 [CCWarp10Client] Creating CPU WarpScript for app: \(applicationId), span: \(span)")
         return """
         [ '\(token)' 'cpu.usage_user' { 'app_id' '\(applicationId)' } NOW \(span) ] FETCH
         """
@@ -225,7 +225,7 @@ public class CCWarp10Client: ObservableObject {
     /// Create WarpScript for Memory metrics  
     /// Real memory metrics may be different - we'll need to check what's available
     private func createMemoryWarpScript(token: String, applicationId: String, span: String) -> String {
-        print("🧪 [CCWarp10Client] Creating Memory WarpScript for app: \(applicationId), span: \(span)")
+        debugLog("🧪 [CCWarp10Client] Creating Memory WarpScript for app: \(applicationId), span: \(span)")
         return """
         [ '\(token)' 'mem.used_percent' { 'app_id' '\(applicationId)' } NOW \(span) ] FETCH
         """
@@ -234,7 +234,7 @@ public class CCWarp10Client: ObservableObject {
     /// Create WarpScript for Network metrics (both in and out)
     /// Real network metrics may be different - we'll test what works
     private func createNetworkWarpScript(token: String, applicationId: String, span: String) -> String {
-        print("🧪 [CCWarp10Client] Creating Network WarpScript for app: \(applicationId), span: \(span)")
+        debugLog("🧪 [CCWarp10Client] Creating Network WarpScript for app: \(applicationId), span: \(span)")
         return """
         [ '\(token)' 'net.bytes_recv' { 'app_id' '\(applicationId)' } NOW \(span) ] FETCH
         [ '\(token)' 'net.bytes_sent' { 'app_id' '\(applicationId)' } NOW \(span) ] FETCH
@@ -250,7 +250,7 @@ public class CCWarp10Client: ObservableObject {
         metricType: MetricType
     ) throws -> [CCApplicationMetricPoint] {
         
-        print("🔍 [CCWarp10Client] Parsing Warp10 response for metric: \(metricType.rawValue)")
+        debugLog("🔍 [CCWarp10Client] Parsing Warp10 response for metric: \(metricType.rawValue)")
         
         // Parse JSON response - Warp10 format: [[{"c":...,"l":...,"v":...}]]
         guard let outerArray = try JSONSerialization.jsonObject(with: data) as? [Any],
@@ -265,11 +265,11 @@ public class CCWarp10Client: ObservableObject {
             guard let gts = gtsElement as? [String: Any],
                   let className = gts["c"] as? String,
                   let values = gts["v"] as? [[Any]] else {
-                print("⚠️ [CCWarp10Client] Skipping malformed GTS")
+                debugLog("⚠️ [CCWarp10Client] Skipping malformed GTS")
                 continue
             }
             
-            print("✅ [CCWarp10Client] Processing GTS '\(className)' with \(values.count) data points")
+            debugLog("✅ [CCWarp10Client] Processing GTS '\(className)' with \(values.count) data points")
             
             // Parse value arrays: [[timestamp, value], ...]
             for valueArray in values {
@@ -296,7 +296,7 @@ public class CCWarp10Client: ObservableObject {
         // Sort by timestamp (oldest first)
         points.sort { $0.timestamp < $1.timestamp }
         
-        print("✅ [CCWarp10Client] Successfully parsed \(points.count) data points for \(metricType.rawValue)")
+        debugLog("✅ [CCWarp10Client] Successfully parsed \(points.count) data points for \(metricType.rawValue)")
         return points
     }
     
@@ -304,7 +304,7 @@ public class CCWarp10Client: ObservableObject {
     /// Network query returns format: [[{"c":"net.bytes_recv",...},{"c":"net.bytes_sent",...}]]
     private func parseWarp10NetworkResponse(data: Data) throws -> [CCApplicationMetricPoint] {
         
-        print("🔍 [CCWarp10Client] Parsing Warp10 network response")
+        debugLog("🔍 [CCWarp10Client] Parsing Warp10 network response")
         
         // Parse JSON response - same format as other metrics
         guard let outerArray = try JSONSerialization.jsonObject(with: data) as? [Any],
@@ -319,7 +319,7 @@ public class CCWarp10Client: ObservableObject {
             guard let gts = gtsElement as? [String: Any],
                   let className = gts["c"] as? String,
                   let values = gts["v"] as? [[Any]] else {
-                print("⚠️ [CCWarp10Client] Skipping malformed network GTS")
+                debugLog("⚠️ [CCWarp10Client] Skipping malformed network GTS")
                 continue
             }
             
@@ -334,11 +334,11 @@ public class CCWarp10Client: ObservableObject {
                 metricType = "net.out.bytes" 
                 unit = "bytes/s"
             } else {
-                print("⚠️ [CCWarp10Client] Unknown network metric: \(className)")
+                debugLog("⚠️ [CCWarp10Client] Unknown network metric: \(className)")
                 continue
             }
             
-            print("✅ [CCWarp10Client] Processing network GTS '\(className)' -> \(metricType) with \(values.count) data points")
+            debugLog("✅ [CCWarp10Client] Processing network GTS '\(className)' -> \(metricType) with \(values.count) data points")
             
             // Parse value arrays: [[timestamp, value], ...]
             for valueArray in values {
@@ -365,7 +365,7 @@ public class CCWarp10Client: ObservableObject {
         // Sort by timestamp
         points.sort { $0.timestamp < $1.timestamp }
         
-        print("✅ [CCWarp10Client] Successfully parsed \(points.count) network data points")
+        debugLog("✅ [CCWarp10Client] Successfully parsed \(points.count) network data points")
         return points
     }
 }

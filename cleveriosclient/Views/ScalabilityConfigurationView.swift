@@ -564,7 +564,7 @@ struct ScalabilityConfigurationView: View {
                     object: nil
                 )
                 
-                print("🔄 Sent refresh notifications for application: \(application.id)")
+                debugLog("🔄 Sent refresh notifications for application: \(application.id)")
             }
             
             // Additional delay and second refresh to ensure data is updated
@@ -577,11 +577,11 @@ struct ScalabilityConfigurationView: View {
                     object: application.id
                 )
                 
-                print("🔄 Sent second refresh notification for application: \(application.id)")
+                debugLog("🔄 Sent second refresh notification for application: \(application.id)")
             }
             
         } catch {
-            print("🔄 Error during refresh delay: \(error)")
+            debugLog("🔄 Error during refresh delay: \(error)")
         }
     }
 }

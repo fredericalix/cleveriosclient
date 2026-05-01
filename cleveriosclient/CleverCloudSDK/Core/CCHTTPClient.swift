@@ -340,8 +340,8 @@ public final class CCHTTPClient: ObservableObject {
                 // Debug: Log the JSON payload being sent
                 if configuration.enableDebugLogging {
                     if let jsonString = String(data: bodyData, encoding: .utf8) {
-                        print("📦 [DEBUG] JSON Payload being sent:")
-                        print("📦 [DEBUG] \(jsonString)")
+                        debugLog("📦 [DEBUG] JSON Payload being sent:")
+                        debugLog("📦 [DEBUG] \(jsonString)")
                     }
                 }
             } catch {
@@ -475,8 +475,8 @@ public final class CCHTTPClient: ObservableObject {
                 // Debug: Log the JSON payload being sent
                 if configuration.enableDebugLogging {
                     if let jsonString = String(data: bodyData, encoding: .utf8) {
-                        print("📦 [DEBUG] JSON Payload being sent:")
-                        print("📦 [DEBUG] \(jsonString)")
+                        debugLog("📦 [DEBUG] JSON Payload being sent:")
+                        debugLog("📦 [DEBUG] \(jsonString)")
                     }
                 }
             } catch {
@@ -580,10 +580,10 @@ public final class CCHTTPClient: ObservableObject {
                     
                     // Enhanced logging for application creation errors
                     if endpoint.contains("applications") && method.rawValue == "POST" {
-                        print("❌ [APPLICATION CREATION ERROR] Status: \(httpResponse.statusCode)")
-                        print("❌ [APPLICATION CREATION ERROR] Endpoint: \(endpoint)")
-                        print("❌ [APPLICATION CREATION ERROR] Error Body: \(errorMessage)")
-                        print("❌ [APPLICATION CREATION ERROR] Headers: \(httpResponse.allHeaderFields)")
+                        debugLog("❌ [APPLICATION CREATION ERROR] Status: \(httpResponse.statusCode)")
+                        debugLog("❌ [APPLICATION CREATION ERROR] Endpoint: \(endpoint)")
+                        debugLog("❌ [APPLICATION CREATION ERROR] Error Body: \(errorMessage)")
+                        debugLog("❌ [APPLICATION CREATION ERROR] Headers: \(httpResponse.allHeaderFields)")
                     }
                     
                     throw CCError.httpError(statusCode: httpResponse.statusCode, message: errorMessage)

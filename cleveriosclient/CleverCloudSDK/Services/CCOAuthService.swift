@@ -50,7 +50,7 @@ final class CCOAuthService: NSObject {
         isAuthenticated = false
         authError = nil
         if configuration.enableDebugLogging {
-            print("🔐 User logged out successfully")
+            debugLog("🔐 User logged out successfully")
         }
     }
     
@@ -60,7 +60,7 @@ final class CCOAuthService: NSObject {
         isAuthenticated = false
         
         if configuration.enableDebugLogging {
-            print("🔄 Authentication reset - credentials deleted from keychain")
+            debugLog("🔄 Authentication reset - credentials deleted from keychain")
         }
     }
     
@@ -113,7 +113,7 @@ final class CCOAuthService: NSObject {
         authError = nil
         
         if configuration.enableDebugLogging {
-            print("🔐 Starting CLI token authentication...")
+            debugLog("🔐 Starting CLI token authentication...")
         }
         
         RemoteLogger.shared.info("🚀 Starting OAuth authentication flow")
@@ -123,7 +123,7 @@ final class CCOAuthService: NSObject {
         self.cliToken = cliToken
         
         if configuration.enableDebugLogging {
-            print("🔐 Generated CLI token: \(cliToken)")
+            debugLog("🔐 Generated CLI token: \(cliToken)")
         }
         
         RemoteLogger.shared.debug("🔑 Generated CLI token", metadata: [
@@ -140,7 +140,7 @@ final class CCOAuthService: NSObject {
         }
         
         if configuration.enableDebugLogging {
-            print("🔐 Opening console URL: \(consoleURL)")
+            debugLog("🔐 Opening console URL: \(consoleURL)")
         }
         
         RemoteLogger.shared.info("🌐 Console URL built", metadata: [
@@ -245,7 +245,7 @@ final class CCOAuthService: NSObject {
                 attempts += 1
                 
                 if configuration.enableDebugLogging {
-                    print("🔐 Polling attempt \(attempts)/\(CLIAuth.maxPollingAttempts)")
+                    debugLog("🔐 Polling attempt \(attempts)/\(CLIAuth.maxPollingAttempts)")
                 }
                 
                 RemoteLogger.shared.debug("🔄 Polling attempt", metadata: [
@@ -269,7 +269,7 @@ final class CCOAuthService: NSObject {
                     }
                 } catch {
                     if configuration.enableDebugLogging {
-                        print("🔐 Polling error: \(error.localizedDescription)")
+                        debugLog("🔐 Polling error: \(error.localizedDescription)")
                     }
                     
                     RemoteLogger.shared.error("❌ Polling error", metadata: [
@@ -293,7 +293,7 @@ final class CCOAuthService: NSObject {
                 // Attendre avant le prochain poll
                 if attempts % 10 == 0 {
                     if configuration.enableDebugLogging {
-                        print("🔐 Still waiting for authentication completion...")
+                        debugLog("🔐 Still waiting for authentication completion...")
                     }
                     RemoteLogger.shared.info("⏳ Still polling for tokens", metadata: [
                         "attempts": "\(attempts)",
@@ -337,7 +337,7 @@ final class CCOAuthService: NSObject {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         if configuration.enableDebugLogging {
-            print("🔐 Polling URL: \(url)")
+            debugLog("🔐 Polling URL: \(url)")
         }
         
         RemoteLogger.shared.debug("🌐 Making polling request", metadata: [
@@ -355,7 +355,7 @@ final class CCOAuthService: NSObject {
         }
         
         if configuration.enableDebugLogging {
-            print("🔐 Polling response status: \(httpResponse.statusCode)")
+            debugLog("🔐 Polling response status: \(httpResponse.statusCode)")
         }
         
         RemoteLogger.shared.debug("📡 Polling response received", metadata: [
@@ -384,7 +384,7 @@ final class CCOAuthService: NSObject {
             let tokenResponse = try JSONDecoder().decode(CLITokenResponse.self, from: data)
             
             if configuration.enableDebugLogging {
-                print("🔐 Tokens received successfully!")
+                debugLog("🔐 Tokens received successfully!")
             }
             
             RemoteLogger.shared.info("✅ Successfully decoded token response", metadata: [
@@ -398,8 +398,8 @@ final class CCOAuthService: NSObject {
             )
         } catch {
             if configuration.enableDebugLogging {
-                print("🔐 JSON parsing error: \(error)")
-                print("🔐 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+                debugLog("🔐 JSON parsing error: \(error)")
+                debugLog("🔐 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
             }
             RemoteLogger.shared.error("❌ Failed to decode token response", metadata: [
                 "error": error.localizedDescription,
@@ -414,7 +414,7 @@ final class CCOAuthService: NSObject {
     @MainActor
     private func handleTokensReceived(_ credentials: OAuthCredentials) {
         if configuration.enableDebugLogging {
-            print("🎉 AUTHENTICATION SUCCESS! Tokens received and saving to keychain...")
+            debugLog("🎉 AUTHENTICATION SUCCESS! Tokens received and saving to keychain...")
         }
         
         // Sauvegarder dans le keychain
@@ -426,8 +426,8 @@ final class CCOAuthService: NSObject {
         authError = nil
         
         if configuration.enableDebugLogging {
-            print("🎉 Authentication completed successfully! User is now logged in.")
-            print("🔐 isAuthenticated: \(isAuthenticated)")
+            debugLog("🎉 Authentication completed successfully! User is now logged in.")
+            debugLog("🔐 isAuthenticated: \(isAuthenticated)")
         }
         
         // Petite pause pour s'assurer que tout est bien sauvegardé
@@ -465,7 +465,7 @@ final class CCOAuthService: NSObject {
         pollingTask = nil
         
         if configuration.enableDebugLogging {
-            print("🔐 Authentication error: \(message)")
+            debugLog("🔐 Authentication error: \(message)")
         }
     }
 }

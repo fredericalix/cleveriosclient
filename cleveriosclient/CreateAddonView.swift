@@ -50,7 +50,7 @@ struct CreateAddonView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(isCreating ? "Creating..." : "Create") {
-                        print("🔥 Create button clicked")
+                        debugLog("🔥 Create button clicked")
                         showingConfirmation = true
                     }
                     .disabled(!isFormValid || isCreating)
@@ -67,7 +67,7 @@ struct CreateAddonView: View {
             .alert("Confirm Creation", isPresented: $showingConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Create", role: .destructive) {
-                    print("🔥 User confirmed - calling createAddon()")
+                    debugLog("🔥 User confirmed - calling createAddon()")
                     createAddon()
                 }
             } message: {
@@ -235,10 +235,10 @@ struct CreateAddonView: View {
     
     
     private func createAddon() {
-        print("🔥 CreateAddonView.createAddon() called")
+        debugLog("🔥 CreateAddonView.createAddon() called")
         guard let provider = selectedProvider,
               let plan = selectedPlan else { 
-            print("🔥 CreateAddon FAILED - provider or plan is nil")
+            debugLog("🔥 CreateAddon FAILED - provider or plan is nil")
             return 
         }
         
@@ -251,10 +251,10 @@ struct CreateAddonView: View {
             region: selectedRegion
         )
         
-        print("🔥 Plan ID being used: '\(plan.id)'")
-        print("🔥 Available plans for \(provider.name):")
+        debugLog("🔥 Plan ID being used: '\(plan.id)'")
+        debugLog("🔥 Available plans for \(provider.name):")
         for availablePlan in provider.plansForRegion(selectedRegion) {
-            print("🔥   - \(availablePlan.name) (id: '\(availablePlan.id)', slug: '\(availablePlan.slug)', price: \(availablePlan.price))")
+            debugLog("🔥   - \(availablePlan.name) (id: '\(availablePlan.id)', slug: '\(availablePlan.slug)', price: \(availablePlan.price))")
         }
         
         let organizationId = selectedOrganization?.id
@@ -271,7 +271,7 @@ struct CreateAddonView: View {
                     }
                 },
                 receiveValue: { _ in
-                    print("✅ Add-on created successfully!")
+                    debugLog("✅ Add-on created successfully!")
                     // Trigger refresh in parent view
                     onAddonCreated?()
                     dismiss()
