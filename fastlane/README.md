@@ -38,21 +38,47 @@ This:
 
 ## Demo data — making screenshots reproducible
 
-The app requires OAuth login, which can't be scripted in an unattended UI test. Two options:
+The app requires OAuth login, which can't be scripted in an unattended UI test. The demo-mode bypass is implemented in `AppCoordinator.init()` (look for `injectDemoTokensIfRequested()`): when the launch environment contains `UI_TEST_DEMO_MODE=1` plus `UI_TEST_OAUTH_TOKEN` and `UI_TEST_OAUTH_SECRET`, the app skips the keychain lookup, injects the tokens straight into the SDK configuration, and lands authenticated.
 
-### Option A (recommended) — Demo mode flag
+`ScreenshotTests.swift` already sets `app.launchEnvironment["UI_TEST_DEMO_MODE"] = "1"` for every test except the login screenshot. You only need to provide the two token env vars when invoking fastlane.
 
-Add a launch-environment-aware bypass in the app:
+### Step 1 — Obtain demo OAuth tokens (one-time)
 
-1. In `AppCoordinator.init()`, check for `ProcessInfo.processInfo.environment["UI_TEST_DEMO_MODE"] == "1"`.
-2. When set, skip the OAuth flow and inject hard-coded demo OAuth tokens (matching the dedicated review demo account).
-3. The UI test sets `app.launchEnvironment["UI_TEST_DEMO_MODE"] = "1"` before `app.launch()`.
+Tokens come from a real OAuth login on the dedicated demo Clever Cloud account (`appletesting@fredalix.com`). They are NEVER hardcoded in source.
 
-This way every screenshot run starts authenticated against a real (demo) Clever Cloud account.
+1. Boot a simulator and run the app from Xcode (`Cmd+R`).
+2. Tap **Sign in with Clever Cloud**, complete the OAuth flow with the demo account credentials.
+3. Once back in the app authenticated, in Xcode:
+   - Pause execution (Debug → Pause).
+   - In the LLDB console, run:
+     ```
+     po CCKeychainManager().loadCredentials()
+     ```
+   - Copy the `token` and `secret` strings from the printed struct.
 
-### Option B — Manual login
+### Step 2 — Wire the tokens into fastlane
 
-Less reproducible but faster initial setup: manually log into the simulator once with the demo account, then run `fastlane screenshots`. Tokens persist in the simulator Keychain between runs as long as the app isn't reinstalled (we set `reinstall_app(false)` in `Snapfile`).
+Create `fastlane/.env` (gitignored — the `.env` rule in `.gitignore` already covers it) with:
+
+```bash
+UI_TEST_DEMO_MODE=1
+UI_TEST_OAUTH_TOKEN=<paste-token-from-step-1>
+UI_TEST_OAUTH_SECRET=<paste-secret-from-step-1>
+```
+
+fastlane reads `.env` automatically.
+
+### Step 3 — Run the captures
+
+```bash
+bundle exec fastlane screenshots
+```
+
+Every test except `test01_Login` will launch fully authenticated against the demo account.
+
+### Falling back to manual capture
+
+If you'd rather skip the bypass for the first submission, just take screenshots manually from the simulator after a real OAuth login. fastlane setup remains untouched in the repo for future runs.
 
 ## Upload to App Store Connect
 

@@ -67,16 +67,28 @@ The two `.astro` pages have already been created in `~/fax/src/fredalix.com/`. T
 
 ## Phase 3 — Generate App Store screenshots
 
+The demo-mode bypass is already implemented in `AppCoordinator.injectDemoTokensIfRequested()`. Tokens are NEVER hardcoded — they come from a one-time real OAuth login on the demo account (`appletesting@fredalix.com`).
+
 - [ ] Install bundler + fastlane:
   ```bash
   gem install bundler
   bundle install
   bundle exec fastlane snapshot update    # writes SnapshotHelper.swift
   ```
-- [ ] **Add demo-mode bypass to the app** (see `fastlane/README.md`, Option A):
-  - In `AppCoordinator.init()`, check `ProcessInfo.processInfo.environment["UI_TEST_DEMO_MODE"] == "1"`.
-  - If yes, inject the demo OAuth tokens (use the same demo account as App Review).
-  - This way `ScreenshotTests.swift` can run unattended.
+- [ ] **Obtain demo OAuth tokens** (one-time):
+  1. Run the app from Xcode (`Cmd+R`) on a simulator.
+  2. Tap **Sign in with Clever Cloud**, log in with the demo account.
+  3. Once authenticated, in Xcode: Debug → Pause, then in lldb:
+     ```
+     po CCKeychainManager().loadCredentials()
+     ```
+  4. Copy `token` and `secret` from the printed struct.
+- [ ] Wire tokens into fastlane:
+  ```bash
+  cp fastlane/.env.example fastlane/.env
+  # then edit fastlane/.env and paste the token + secret values
+  ```
+  `fastlane/.env` is git-ignored. Never commit it.
 - [ ] Run the capture:
   ```bash
   bundle exec fastlane screenshots
@@ -85,6 +97,8 @@ The two `.astro` pages have already been created in `~/fax/src/fredalix.com/`. T
   - At least 4 PNGs at **1320×2868** (iPhone 16 Pro Max)
   - At least 4 PNGs at **2064×2752** (iPad Pro 13" M4)
 - [ ] (Optional) Tweak scenarios in `cleveriosclientUITests/ScreenshotTests.swift` if any screen comes out empty.
+
+> **Alternative for v1:** if you'd rather skip the bypass setup for the first submission, take screenshots manually from the simulator after a real OAuth login (Cmd+S in the simulator menu). fastlane scaffolding stays in place for future runs.
 
 ---
 
