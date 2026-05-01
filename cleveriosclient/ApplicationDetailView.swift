@@ -1039,20 +1039,57 @@ struct ApplicationDetailView: View {
         deploymentHistoryView
     }
 
+    @State private var showingLogsFullScreen = false
+
     private var logsTab: some View {
-        ApplicationLogsView(
-            application: application,
-            cleverCloudSDK: cleverCloudSDK,
-            organizationId: organizationId,
-            logs: $logs,
-            isLoadingLogs: $isLoadingLogs,
-            logsError: $logsError,
-            searchText: $searchText,
-            selectedLogLevel: $selectedLogLevel,
-            isPaused: $isPaused,
-            autoScroll: $autoScroll,
-            logsTimer: $logsTimer
-        )
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 60))
+                .foregroundColor(.blue)
+
+            VStack(spacing: 6) {
+                Text("Application Logs")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Text("Live tail • up to 250 entries • long-press to select")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                showingLogsFullScreen = true
+            } label: {
+                Label("Display Logs", systemImage: "arrow.up.left.and.arrow.down.right")
+                    .font(.headline)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fullScreenCover(isPresented: $showingLogsFullScreen) {
+            ApplicationLogsView(
+                application: application,
+                cleverCloudSDK: cleverCloudSDK,
+                organizationId: organizationId,
+                logs: $logs,
+                isLoadingLogs: $isLoadingLogs,
+                logsError: $logsError,
+                searchText: $searchText,
+                selectedLogLevel: $selectedLogLevel,
+                isPaused: $isPaused,
+                autoScroll: $autoScroll,
+                logsTimer: $logsTimer
+            )
+        }
     }
 
     private var domainsTab: some View {
