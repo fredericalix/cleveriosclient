@@ -183,7 +183,7 @@ Support: https://www.fredalix.com/en/cleveriosclient/support
 - **iPhone 6.9"** (1320×2868 px) — iPhone 16 Pro Max
 - **iPad 13"** (2064×2752 px) — iPad Pro M4 13"
 
-Generate via `bundle exec fastlane snapshot` once the snapshot scenarios are set up (see `fastlane/`). Apple infers smaller-device screenshots from these two automatically.
+Captured manually from the iOS simulator (`Cmd+S`) after a real OAuth login with the demo account. Apple infers smaller-device screenshots from these two automatically. See `appstore/submission-checklist.md` Phase 3 for the step-by-step capture flow (status-bar override + ordering).
 
 Suggested 5 screens:
 

@@ -64,18 +64,7 @@ final class AppCoordinator {
             }()
         )
 
-        // UI test demo-mode bypass: inject OAuth tokens from launch environment
-        // so fastlane snapshot can run unattended against the demo Clever Cloud
-        // account. Tokens are NEVER hardcoded — they come from a one-time real
-        // OAuth login (see fastlane/README.md).
-        if injectDemoTokensIfRequested() {
-            self.isAuthenticated = true
-            self.isCheckingAuth = false
-            debugLog("ℹ️ 🧪 Authenticated via UI_TEST_DEMO_MODE — skipping Keychain + monitoring")
-            return
-        }
-
-        // Normal path: load credentials from Keychain
+        // Load credentials from Keychain
         let keychain = CCKeychainManager()
         let credentials = keychain.loadCredentials()
 
@@ -98,22 +87,6 @@ final class AppCoordinator {
         startAuthenticationMonitoring()
     }
 
-    /// Inject demo OAuth tokens from launch environment when running under
-    /// UI tests / fastlane snapshot. Returns `true` if tokens were injected.
-    private func injectDemoTokensIfRequested() -> Bool {
-        let env = ProcessInfo.processInfo.environment
-        guard env["UI_TEST_DEMO_MODE"] == "1" else { return false }
-        guard let token = env["UI_TEST_OAUTH_TOKEN"],
-              let secret = env["UI_TEST_OAUTH_SECRET"],
-              !token.isEmpty, !secret.isEmpty else {
-            debugLog("⚠️ UI_TEST_DEMO_MODE set but UI_TEST_OAUTH_TOKEN/SECRET missing or empty")
-            return false
-        }
-        debugLog("ℹ️ 🧪 UI_TEST_DEMO_MODE active — injecting OAuth tokens from launch env")
-        _configuration.updateTokens(accessToken: token, accessTokenSecret: secret)
-        return true
-    }
-    
     // MARK: - Public Methods
     
     /// Configuration initiale de l'authentification

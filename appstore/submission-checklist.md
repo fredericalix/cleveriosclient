@@ -16,8 +16,7 @@ This is a step-by-step checklist for the **first** App Store submission. Tick ea
 - [x] Privacy policy text drafted at `appstore/privacy-policy.md`
 - [x] Support page drafted at `appstore/support.md`
 - [x] App Store metadata drafted at `appstore/app-store-metadata.md`
-- [x] Fastlane snapshot configured (`Gemfile`, `fastlane/Snapfile`, `fastlane/Fastfile`)
-- [x] Screenshot UI tests scaffolded at `cleveriosclientUITests/ScreenshotTests.swift`
+- [x] Demo Clever Cloud account created (`appletesting@fredalix.com`)
 
 ---
 
@@ -65,40 +64,66 @@ The two `.astro` pages have already been created in `~/fax/src/fredalix.com/`. T
 
 ---
 
-## Phase 3 — Generate App Store screenshots
+## Phase 3 — Capture App Store screenshots (manual)
 
-The demo-mode bypass is already implemented in `AppCoordinator.injectDemoTokensIfRequested()`. Tokens are NEVER hardcoded — they come from a one-time real OAuth login on the demo account (`appletesting@fredalix.com`).
+Apple only requires two device classes for a universal app:
 
-- [ ] Install bundler + fastlane:
-  ```bash
-  gem install bundler
-  bundle install
-  bundle exec fastlane snapshot update    # writes SnapshotHelper.swift
-  ```
-- [ ] **Obtain demo OAuth tokens** (one-time):
-  1. Run the app from Xcode (`Cmd+R`) on a simulator.
-  2. Tap **Sign in with Clever Cloud**, log in with the demo account.
-  3. Once authenticated, in Xcode: Debug → Pause, then in lldb:
-     ```
-     po CCKeychainManager().loadCredentials()
-     ```
-  4. Copy `token` and `secret` from the printed struct.
-- [ ] Wire tokens into fastlane:
-  ```bash
-  cp fastlane/.env.example fastlane/.env
-  # then edit fastlane/.env and paste the token + secret values
-  ```
-  `fastlane/.env` is git-ignored. Never commit it.
-- [ ] Run the capture:
-  ```bash
-  bundle exec fastlane screenshots
-  ```
-- [ ] Verify outputs in `fastlane/screenshots/en-US/`:
-  - At least 4 PNGs at **1320×2868** (iPhone 16 Pro Max)
-  - At least 4 PNGs at **2064×2752** (iPad Pro 13" M4)
-- [ ] (Optional) Tweak scenarios in `cleveriosclientUITests/ScreenshotTests.swift` if any screen comes out empty.
+- **iPhone 6.9"** — 1320×2868 px → simulator **iPhone 16 Pro Max** (iOS 18+)
+- **iPad 13"** — 2064×2752 px → simulator **iPad Pro 13-inch (M4)** (iPadOS 18+)
 
-> **Alternative for v1:** if you'd rather skip the bypass setup for the first submission, take screenshots manually from the simulator after a real OAuth login (Cmd+S in the simulator menu). fastlane scaffolding stays in place for future runs.
+Apple infers all smaller sizes from these two.
+
+### Status bar override
+
+Before capturing, force the simulator status bar to the Apple convention (9:41, full battery, full signal):
+
+```bash
+# Boot the simulator first (Xcode → Product → Destination → choose device → Cmd+R).
+# Then while it's running:
+xcrun simctl status_bar booted override \
+  --time "9:41" \
+  --dataNetwork wifi \
+  --wifiMode active \
+  --wifiBars 3 \
+  --cellularMode active \
+  --cellularBars 4 \
+  --batteryState charged \
+  --batteryLevel 100
+```
+
+The override persists until you reboot the simulator or run `xcrun simctl status_bar booted clear`.
+
+### Capture flow (per device)
+
+1. **Product → Destination → iPhone 16 Pro Max** (then iPad Pro 13" M4 after).
+2. **Cmd+R** to build and launch.
+3. Apply the status bar override above.
+4. **Login screen** → `Cmd+S` (Simulator → File → Save Screen). PNG drops on the Desktop.
+5. Tap **Sign in with Clever Cloud** → log in with `appletesting@fredalix.com` (password from your password manager).
+6. Capture each screen with `Cmd+S`:
+   - **02-Dashboard**: sidebar orgs + apps list + add-ons (the iPad 3-column layout shines here).
+   - **03-AppDetail-Metrics**: tap an app → Metrics tab (visual heavy).
+   - **04-AppDetail-Logs**: Logs tab in stream (also visual heavy).
+   - **05-AppDetail-Deployments**: Deployments tab.
+7. Rename PNGs on the Desktop with the `01-`, `02-`, … prefix — App Store Connect orders screenshots alphabetically.
+8. **Drop them** in `appstore/screenshots/iphone-6.9/` (and `appstore/screenshots/ipad-13/` after the iPad pass).
+
+### Verification
+
+```bash
+# Sizes must be exactly 1320x2868 (iPhone) and 2064x2752 (iPad)
+sips -g pixelWidth -g pixelHeight appstore/screenshots/iphone-6.9/*.png
+sips -g pixelWidth -g pixelHeight appstore/screenshots/ipad-13/*.png
+```
+
+Visually check each PNG:
+- Status bar reads `9:41`, full bars and battery.
+- No real personal data (the `appletesting@fredalix.com` content is the only acceptable user-visible identifier).
+- No notification banners covering content.
+
+### Repeat on iPad Pro 13"
+
+iPad's simulator has its own Keychain — you'll log in again. The 3-column NavigationSplitView in the Dashboard is the most distinctive iPad screenshot.
 
 ---
 
@@ -151,7 +176,7 @@ Section by section, paste from `appstore/app-store-metadata.md`:
 - [ ] **Keywords** (paste from metadata file — comma-separated, no spaces)
 - [ ] **Support URL** (from Phase 2)
 - [ ] **Marketing URL** (optional)
-- [ ] **Screenshots**: drag-and-drop the PNGs from `fastlane/screenshots/en-US/`. Order them deliberately:
+- [ ] **Screenshots**: drag-and-drop the PNGs from `appstore/screenshots/`. Order them deliberately:
   1. Dashboard (most informative first)
   2. Application detail — Metrics
   3. Application detail — Logs
@@ -248,8 +273,9 @@ strings build/Release-iphoneos/cleveriosclient.app/cleveriosclient | grep -iE "f
 # Confirm PrivacyInfo is shipped:
 unzip -l <path-to-ipa>/cleveriosclient.ipa | grep PrivacyInfo
 
-# Test screenshot generation:
-bundle exec fastlane screenshots
+# Confirm screenshot sizes (must be 1320x2868 iPhone, 2064x2752 iPad):
+sips -g pixelWidth -g pixelHeight appstore/screenshots/iphone-6.9/*.png
+sips -g pixelWidth -g pixelHeight appstore/screenshots/ipad-13/*.png
 
 # Confirm URLs are live:
 curl -I https://<your-host>/privacy-policy
