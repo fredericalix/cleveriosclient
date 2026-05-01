@@ -37,6 +37,16 @@ open cleveriosclient.xcodeproj
 
 The SDK is accessed through `coordinator.cleverCloudSDK` (lazy singleton). Consumer credentials are hardcoded in `AppCoordinator.init()` (from clever-tools).
 
+### App State Layer
+
+`AppState` (`cleveriosclient/AppState.swift`) is an `@Observable final class` that serves as the single source of truth for shared data (`organizations`, `applications`, `addons`, `applicationStatuses`) and owns the intelligent polling system. It lives in the SwiftUI environment (`@Environment(AppState.self)`) and survives view recreations — critical on iPad where SwiftUI rebuilds the `ContentView` struct during `NavigationSplitView` layout, which would reset any `@State` polling guard.
+
+The polling system runs two timers:
+- **Status polling** (every 15s) — refreshes `applicationStatuses` via `CCApplicationService.getApplicationInstances` per app
+- **Data refresh** (every 10s) — refreshes the apps + addons lists via the `dataRefreshTick` closure
+
+`AppState.startPolling(applicationsProvider:organizationIdProvider:dataRefreshTick:)` is idempotent (guard on `pollingTimer == nil`). ContentView passes closures that read its current `@State` arrays so AppState doesn't need to own all data state.
+
 ### SDK Layer (`CleverCloudSDK/`)
 
 `CleverCloudSDK` is an `ObservableObject` that owns all service objects. Each service takes `CCHTTPClient` as a dependency.
@@ -55,7 +65,7 @@ The SDK is accessed through `coordinator.cleverCloudSDK` (lazy singleton). Consu
 - `CCDeploymentService` - Deployment history, restart, redeploy
 - `CCEnvironmentService` - Environment variables, app config, domains
 - `CCNetworkGroupService` - Network groups, members, peers, WireGuard configs
-- `CCEventsService` - Polling-based status updates (WebSocket removed, polling every 15s)
+- `CCEventsService` - Polling-based status updates (WebSocket removed, polling every 15s). The lifecycle (`connect()`/`disconnect()`) is driven by `AppState.startPolling()` / `stopPolling()`, not by Views directly.
 - `CCScalabilityService` - Instance/flavor scaling configuration
 - `CCApplicationMetricsService` - Application metrics via Warp10
 - `CCWarp10Client` - Direct Warp10 time-series queries (tokens cached for 5 days)
@@ -81,28 +91,46 @@ API calls differ based on whether targeting personal space or an organization:
 ### View Layer
 
 Most views live directly in `cleveriosclient/` (not in a `Views/` subdirectory):
-- `ContentView` - Main dashboard after login (org picker, app/addon lists)
-- `ApplicationDetailView` - Multi-tab app details (overview, env, config, deployments, domains, advanced)
-- `AddonDetailView` - Add-on details and management
-- `NetworkGroup*View` - Network group management and visualization (feature-flagged off)
+- `ContentView` - Main dashboard after login. Layout is **device-conditional**:
+  - **iPad/Mac**: 3-column `NavigationSplitView` (orgs sidebar | apps+addons content | detail) with `columnVisibility` state
+  - **iPhone**: `NavigationStack(path:)` with an `AppDestination` enum
+- `ApplicationDetailView` - 7 top-level tabs in a SwiftUI `TabView`:
+  `Environment | Configuration | Metrics | Deployments | Logs | Domains | Advanced`
+  The Logs tab is a **trampoline** showing a "Display Logs" button that opens `ApplicationLogsView` in a `fullScreenCover`. The other 6 tabs render their content inline.
+- `AddonDetailView` - Add-on details, including an embedded logs viewer using the same buffer policy as `ApplicationLogsView`
 - `LoginView` - OAuth login flow
 - Scalability/metrics views are in `Views/` subdirectory
 
-`CleverCloudViewModel` wraps SDK calls with Combine subscriptions and published state for the main dashboard.
+**macOS support** = "Designed for iPad" on Apple Silicon (`SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES`, `SUPPORTS_MACCATALYST = NO`). No native macOS target. UIKit calls (e.g. `UIPasteboard`, `UIApplication.didEnterBackgroundNotification`) work as-is — no `#if os(macOS)` guards needed.
+
+#### Logs Buffers
+
+`ApplicationLogsView` and `AddonDetailView` share the same rolling-buffer pattern:
+- `initialLogsLimit = 50` — entries fetched on the first load
+- `maxLogsBufferSize = 250` — hard cap on the rolling buffer; live-tail keeps appending newest entries up to this size, then oldest drop off
+- A `Timer` (2-3s interval, stored in `@Binding logsTimer`) drives the live tail while the view is visible (`onAppear` starts, `onDisappear` invalidates)
 
 ### Async Pattern
 
 All SDK calls return `AnyPublisher<T, CCError>` (Combine). Views subscribe with `.sink()`, store subscriptions in `Set<AnyCancellable>`, and dispatch to main queue with `.receive(on: DispatchQueue.main)`.
 
-### Remote Logging
+### Logging
 
-`RemoteLogger` sends logs to `https://log-ios.fredalix.com` for TestFlight debugging. Configured on app launch, flushes on background. Uses log levels: DEBUG, INFO, WARN, ERROR with metadata dictionaries.
+**Console logging via `debugLog()`** (`cleveriosclient/Logger/DebugLog.swift`) — `@inlinable` wrapper around `Swift.print` gated by `#if DEBUG`. Compiles to a no-op in Release builds, so the App Store binary contains no log strings (verified via `strings`). Uses `@autoclosure () -> String` so the literal string interpolation is never materialized in Release.
+
+**Always use `debugLog(...)`, never `print(...)` directly** — a project-wide `grep "print("` should return zero hits outside `DebugLog.swift`. The bulk migration was done in commit `477db7a`.
+
+To re-enable logs in a Release build (e.g. for a TestFlight diagnostic), flip `kForceConsoleLogs` to `true` in `DebugLog.swift` and rebuild Release. **Remember to flip back to `false` before App Store submission.**
+
+**Remote logging** (`cleveriosclient/Logger/RemoteLogger.swift`) — sends logs to `https://log-ios.fredalix.com` for TestFlight debugging, distinct from console output. Configured on app launch, flushes on background. Levels: DEBUG/INFO/WARN/ERROR with metadata dictionaries. Continues to work in Release.
 
 ## Development Guidelines
 
 - **CC prefix** for all SDK types, no prefix for app-level views
-- **@Observable** (iOS 17+ macro) for `AppCoordinator`; **ObservableObject** (Combine) for SDK classes
+- **@Observable** (iOS 17+ macro) for `AppCoordinator` and `AppState`; **ObservableObject** (Combine) for SDK classes
 - **Combine** for all async operations (not async/await)
 - Clean build cache when modifying model structs to avoid stale JSON decoding
-- Network Groups feature is currently disabled via `isNetworkGroupsEnabled = false` flag in ContentView
+- **`debugLog()` over `print()`** — all console output must go through `debugLog()` (Apple App Store compliance, no log strings in Release binary)
+- **Shared state in `AppState`, not in `ContentView.@State`** — anything that must survive view recreation (especially on iPad NavigationSplitView) belongs in AppState. Closures-as-providers is the pattern when AppState needs to read data still owned by a View
+- **iPad navigation = `NavigationSplitView` (3 columns)** — new iPad layouts should follow this pattern, not push-stack navigation
 - Domain encoding must match JavaScript's `encodeURIComponent` exactly for OAuth signature compatibility
