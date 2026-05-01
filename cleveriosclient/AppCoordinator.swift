@@ -49,9 +49,7 @@ final class AppCoordinator {
         self.isAuthenticated = false
         self.isCheckingAuth = true
         
-        RemoteLogger.shared.info("🚀 AppCoordinator initialized", metadata: [
-            "timestamp": Date().description
-        ])
+        debugLog("ℹ️ 🚀 AppCoordinator initialized [timestamp=\(Date().description)]")
         
         // Initialize configuration first
         let keychain = CCKeychainManager()
@@ -70,21 +68,18 @@ final class AppCoordinator {
             }()
         )
         
-        RemoteLogger.shared.debug("Configuration initialized", metadata: [
-            "hasToken": (credentials?.token != nil && !credentials!.token.isEmpty) ? "yes" : "no",
-            "hasTokenSecret": (credentials?.secret != nil && !credentials!.secret.isEmpty) ? "yes" : "no"
-        ])
+        debugLog("🔍 Configuration initialized [hasToken=\((credentials?.token != nil && !credentials!.token.isEmpty) ? "yes" : "no"), hasTokenSecret=\((credentials?.secret != nil && !credentials!.secret.isEmpty) ? "yes" : "no")]")
         
         // Update tokens if available
         if let credentials = credentials,
            !credentials.token.isEmpty,
            !credentials.secret.isEmpty {
-            RemoteLogger.shared.info("🔑 Found stored OAuth tokens, updating configuration")
+            debugLog("ℹ️ 🔑 Found stored OAuth tokens, updating configuration")
             _configuration.updateTokens(accessToken: credentials.token, accessTokenSecret: credentials.secret)
             self.isAuthenticated = true
-            RemoteLogger.shared.info("✅ User authenticated from stored credentials")
+            debugLog("ℹ️ ✅ User authenticated from stored credentials")
         } else {
-            RemoteLogger.shared.info("📱 No valid OAuth tokens found, user needs to login")
+            debugLog("ℹ️ 📱 No valid OAuth tokens found, user needs to login")
         }
         
         isCheckingAuth = false

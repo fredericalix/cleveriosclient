@@ -537,13 +537,7 @@ public class CCAddonService: ObservableObject {
                 let queryString = urlComponents.query ?? ""
                 let fullEndpoint = queryString.isEmpty ? v4Endpoint : "\(v4Endpoint)?\(queryString)"
                 
-                RemoteLogger.shared.debug("[CleverMetrics] Requesting v4 metrics with token", metadata: [
-                    "endpoint": fullEndpoint,
-                    "addonId": addonId,
-                    "organizationId": orgId,
-                    "period": period,
-                    "tokenPrefix": String(token.prefix(20))
-                ])
+                debugLog("🔍 [CleverMetrics] Requesting v4 metrics with token [endpoint=\(fullEndpoint), addonId=\(addonId), organizationId=\(orgId), period=\(period), tokenPrefix=\(token.prefix(20))]")
                 
                 // Create custom request with Bearer token
                 return self.httpClient.requestWithBearerToken(
@@ -555,20 +549,12 @@ public class CCAddonService: ObservableObject {
                 .handleEvents(
                     receiveOutput: { (metrics: CCAddonMetrics) in
                         debugLog("✅ [CCAddonService] Successfully received metrics from v4 API")
-                        RemoteLogger.shared.debug("[CleverMetrics] Successfully received v4 metrics", metadata: [
-                            "addonId": addonId,
-                            "endpoint": fullEndpoint
-                        ])
+                        debugLog("🔍 [CleverMetrics] Successfully received v4 metrics [addonId=\(addonId), endpoint=\(fullEndpoint)]")
                     },
                     receiveCompletion: { completion in
                         if case .failure(let error) = completion {
                             debugLog("❌ [CCAddonService] Failed to get v4 metrics: \(error)")
-                            RemoteLogger.shared.error("[CleverMetrics] Failed to get v4 metrics", metadata: [
-                                "error": error.localizedDescription,
-                                "endpoint": fullEndpoint,
-                                "addonId": addonId,
-                                "organizationId": orgId
-                            ])
+                            debugLog("❌ [CleverMetrics] Failed to get v4 metrics [error=\(error.localizedDescription), endpoint=\(fullEndpoint), addonId=\(addonId), organizationId=\(orgId)]")
                         }
                     }
                 )
@@ -579,10 +565,7 @@ public class CCAddonService: ObservableObject {
                 debugLog("⚠️ [CCAddonService] Metrics token or V4 failed, trying v2 fallback: \(error)")
                 let v2Endpoint = "/organisations/\(orgId)/applications/\(addonId)/metrics?span=\(period)"
                 
-                RemoteLogger.shared.debug("[CleverMetrics] Falling back to v2 endpoint", metadata: [
-                    "endpoint": v2Endpoint,
-                    "reason": error.localizedDescription
-                ])
+                debugLog("🔍 [CleverMetrics] Falling back to v2 endpoint [endpoint=\(v2Endpoint), reason=\(error.localizedDescription)]")
                 
                 return self.httpClient.get(v2Endpoint, apiVersion: .v2)
             }
@@ -690,33 +673,16 @@ public class CCAddonService: ObservableObject {
         debugLog("📈 [CCAddonService] Getting time series for metric '\(metric)' from: \(endpoint)")
         
         // Log detailed request info
-        RemoteLogger.shared.debug("[CleverMetrics] Requesting time series", metadata: [
-            "endpoint": endpoint,
-            "addonId": addonId,
-            "organizationId": organizationId ?? "nil",
-            "metric": metric,
-            "interval": interval,
-            "span": queryParams.first { $0.contains("span=") } ?? "unknown",
-            "apiVersion": "v4"
-        ])
+        debugLog("🔍 [CleverMetrics] Requesting time series [endpoint=\(endpoint), addonId=\(addonId), organizationId=\(organizationId ?? "nil"), metric=\(metric), interval=\(interval), span=\(queryParams.first { $0.contains("span=") } ?? "unknown"), apiVersion=v4]")
         
         return httpClient.get(endpoint, apiVersion: .v4)
             .handleEvents(
                 receiveOutput: { dataPoints in
-                    RemoteLogger.shared.debug("[CleverMetrics] Successfully received time series", metadata: [
-                        "metric": metric,
-                        "dataPointsCount": "\(dataPoints.count)",
-                        "endpoint": endpoint
-                    ])
+                    debugLog("🔍 [CleverMetrics] Successfully received time series [metric=\(metric), dataPointsCount=\(dataPoints.count), endpoint=\(endpoint)]")
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        RemoteLogger.shared.error("[CleverMetrics] Failed to get time series", metadata: [
-                            "error": error.localizedDescription,
-                            "endpoint": endpoint,
-                            "metric": metric,
-                            "addonId": addonId
-                        ])
+                        debugLog("❌ [CleverMetrics] Failed to get time series [error=\(error.localizedDescription), endpoint=\(endpoint), metric=\(metric), addonId=\(addonId)]")
                     }
                 }
             )

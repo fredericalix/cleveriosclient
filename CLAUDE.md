@@ -122,7 +122,7 @@ All SDK calls return `AnyPublisher<T, CCError>` (Combine). Views subscribe with 
 
 To re-enable logs in a Release build (e.g. for a TestFlight diagnostic), flip `kForceConsoleLogs` to `true` in `DebugLog.swift` and rebuild Release. **Remember to flip back to `false` before App Store submission.**
 
-**Remote logging** (`cleveriosclient/Logger/RemoteLogger.swift`) — sends logs to `https://log-ios.fredalix.com` for TestFlight debugging, distinct from console output. Configured on app launch, flushes on background. Levels: DEBUG/INFO/WARN/ERROR with metadata dictionaries. Continues to work in Release.
+**Log-level convention** — `debugLog` calls prefix the message with an emoji that encodes the level: `❌` error, `⚠️` warn, `ℹ️` info, `🔍` debug. Use this convention so a future grep can filter by level. There is no remote log uploader: the App's only network activity is talking to Clever Cloud's API.
 
 ## Development Guidelines
 

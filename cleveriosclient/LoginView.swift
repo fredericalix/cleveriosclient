@@ -44,17 +44,11 @@ struct LoginView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            RemoteLogger.shared.info("🔐 LoginView appeared", metadata: [
-                "isAuthenticating": coordinator.oauthService.isAuthenticating ? "yes" : "no",
-                "hasError": coordinator.oauthService.authError != nil ? "yes" : "no"
-            ])
+            debugLog("ℹ️ 🔐 LoginView appeared [isAuthenticating=\(coordinator.oauthService.isAuthenticating ? "yes" : "no"), hasError=\(coordinator.oauthService.authError != nil ? "yes" : "no")]")
             startAppearanceAnimations()
         }
         .onChange(of: coordinator.oauthService.isAuthenticated) { oldValue, newValue in
-            RemoteLogger.shared.debug("🔐 LoginView: Authentication state changed", metadata: [
-                "oldValue": oldValue ? "authenticated" : "not authenticated",
-                "newValue": newValue ? "authenticated" : "not authenticated"
-            ])
+            debugLog("🔍 🔐 LoginView: Authentication state changed [oldValue=\(oldValue ? "authenticated" : "not authenticated"), newValue=\(newValue ? "authenticated" : "not authenticated")]")
             if newValue {
                 handleSuccessfulAuthentication()
             }
@@ -137,7 +131,7 @@ struct LoginView: View {
     // MARK: - Login Button
     private var loginButton: some View {
         Button(action: {
-            RemoteLogger.shared.info("🔐 Login button tapped - Starting authentication")
+            debugLog("ℹ️ 🔐 Login button tapped - Starting authentication")
             coordinator.oauthService.authenticate()
         }) {
             HStack(spacing: 12) {
@@ -277,7 +271,7 @@ struct LoginView: View {
     }
     
     private func handleSuccessfulAuthentication() {
-        RemoteLogger.shared.info("✅ LoginView: Authentication successful, dismissing view")
+        debugLog("ℹ️ ✅ LoginView: Authentication successful, dismissing view")
         // Force authentication check in coordinator
         coordinator.forceAuthenticationCheck()
         

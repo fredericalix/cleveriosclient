@@ -120,9 +120,9 @@ public class CCConfiguration: ObservableObject {
         self.accessTokenSecret = accessTokenSecret
         
         if enableDebugLogging {
-            RemoteLogger.shared.info("✅ CCConfiguration: Tokens updated")
-            RemoteLogger.shared.debug("   Access Token: \(accessToken.prefix(10))...")
-            RemoteLogger.shared.debug("   Token Secret: \(accessTokenSecret.prefix(10))...")
+            debugLog("ℹ️ ✅ CCConfiguration: Tokens updated")
+            debugLog("🔍    Access Token: \(accessToken.prefix(10))...")
+            debugLog("🔍    Token Secret: \(accessTokenSecret.prefix(10))...")
         }
         
         objectWillChange.send()
@@ -134,7 +134,7 @@ public class CCConfiguration: ObservableObject {
         self.accessTokenSecret = ""
         
         if enableDebugLogging {
-            RemoteLogger.shared.info("🗑️ CCConfiguration: Tokens cleared")
+            debugLog("ℹ️ 🗑️ CCConfiguration: Tokens cleared")
         }
         
         objectWillChange.send()

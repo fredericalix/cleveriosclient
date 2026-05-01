@@ -83,10 +83,10 @@ public final class CleverCloudSDK: ObservableObject {
         
         if configuration.enableDebugLogging {
             let authType = configuration.hasOAuthTokens ? "OAuth 1.0a" : "Bearer Token (legacy)"
-            RemoteLogger.shared.info("🚀 [CleverCloudSDK] v\(Self.version) Initialized with \(authType)")
+            debugLog("ℹ️ 🚀 [CleverCloudSDK] v\(Self.version) Initialized with \(authType)")
             if configuration.hasOAuthTokens {
-                RemoteLogger.shared.debug("🔑 [CleverCloudSDK] Consumer: \(configuration.consumerKey)")
-                RemoteLogger.shared.debug("🎫 [CleverCloudSDK] Token: \(String(configuration.accessToken.prefix(8)))...")
+                debugLog("🔍 🔑 [CleverCloudSDK] Consumer: \(configuration.consumerKey)")
+                debugLog("🔍 🎫 [CleverCloudSDK] Token: \(String(configuration.accessToken.prefix(8)))...")
             }
         }
     }
@@ -109,7 +109,7 @@ public final class CleverCloudSDK: ObservableObject {
         }
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.error("❌ [CleverCloudSDK] Error: \(error.localizedDescription)")
+            debugLog("❌ ❌ [CleverCloudSDK] Error: \(error.localizedDescription)")
         }
     }
     
@@ -522,7 +522,7 @@ public final class CleverCloudSDK: ObservableObject {
     
     /// Réinitialise l'authentification (supprime les credentials stockés)
     public func resetAuthentication() {
-        RemoteLogger.shared.info("🔄 CleverCloudSDK: Resetting authentication...")
+        debugLog("ℹ️ 🔄 CleverCloudSDK: Resetting authentication...")
         
         // Clear configuration tokens
         configuration.clearTokens()
@@ -535,7 +535,7 @@ public final class CleverCloudSDK: ObservableObject {
         isAuthenticated = false
         lastError = nil
         
-        RemoteLogger.shared.info("✅ CleverCloudSDK: Authentication reset complete")
+        debugLog("ℹ️ ✅ CleverCloudSDK: Authentication reset complete")
     }
 }
 

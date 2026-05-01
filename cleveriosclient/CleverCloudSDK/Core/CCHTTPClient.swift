@@ -35,7 +35,7 @@ public final class CCHTTPClient: ObservableObject {
         self.urlSession = URLSession(configuration: sessionConfig)
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🌐 [CCHTTPClient] Initialized with OAuth 1.0a authentication")
+            debugLog("🔍 🌐 [CCHTTPClient] Initialized with OAuth 1.0a authentication")
         }
     }
     
@@ -252,9 +252,9 @@ public final class CCHTTPClient: ObservableObject {
         if configuration.enableDebugLogging {
             // Log the actual URL being used in the request after OAuth signing
             let requestURL = request.url?.absoluteString ?? "No URL"
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(requestURL)")
+            debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(requestURL)")
             if let authHeader = request.value(forHTTPHeaderField: "Authorization") {
-                RemoteLogger.shared.debug("🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
+                debugLog("🔍 🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
             }
         }
         
@@ -267,13 +267,10 @@ public final class CCHTTPClient: ObservableObject {
                 
                 // Log response for debugging
                 if self.configuration.enableDebugLogging {
-                    RemoteLogger.shared.debug("📡 HTTP Response", metadata: [
-                        "statusCode": "\(httpResponse.statusCode)",
-                        "url": httpResponse.url?.absoluteString ?? "unknown"
-                    ])
+                    debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown")]")
 
                     if let responseString = String(data: data, encoding: .utf8) {
-                        RemoteLogger.shared.debug("📦 Raw response: \(responseString.prefix(500))")
+                        debugLog("🔍 📦 Raw response: \(responseString.prefix(500))")
                     }
 
                 }
@@ -283,7 +280,7 @@ public final class CCHTTPClient: ObservableObject {
                     return data
                 case 401:
                     let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-                    RemoteLogger.shared.error("🔒 401 Unauthorized: \(errorBody)")
+                    debugLog("❌ 🔒 401 Unauthorized: \(errorBody)")
                     throw CCError.authenticationFailed
                 case 404:
                     throw CCError.resourceNotFound
@@ -359,54 +356,39 @@ public final class CCHTTPClient: ObservableObject {
         }
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(url)")
+            debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(url)")
         }
         
         // Perform request
         return urlSession.dataTaskPublisher(for: request)
             .tryMap { data, response in
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    RemoteLogger.shared.error("Invalid response type")
+                    debugLog("❌ Invalid response type")
                     throw CCError.invalidResponse
                 }
                 
                 // Log response details (missing from original requestRawWithBody implementation)
-                RemoteLogger.shared.debug("📡 HTTP Response", metadata: [
-                    "statusCode": "\(httpResponse.statusCode)",
-                    "url": httpResponse.url?.absoluteString ?? "unknown",
-                    "headers": httpResponse.allHeaderFields.description
-                ])
+                debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown"), headers=\(httpResponse.allHeaderFields.description)]")
                 
                 // Log raw response data
                 let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode as UTF-8"
-                RemoteLogger.shared.debug("📦 Raw response data", metadata: [
-                    "size": "\(data.count) bytes",
-                    "preview": String(rawResponse.prefix(500))
-                ])
+                debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(rawResponse.prefix(500))]")
                 
                 switch httpResponse.statusCode {
                 case 200...299:
                     return data
                 case 401:
-                    RemoteLogger.shared.error("🔒 Unauthorized - OAuth token may be invalid")
+                    debugLog("❌ 🔒 Unauthorized - OAuth token may be invalid")
                     throw CCError.authenticationFailed
                 case 404:
-                    RemoteLogger.shared.error("🔍 Not Found - Resource doesn't exist")
-                    RemoteLogger.shared.error("❌ 404 ERROR DETAILS", metadata: [
-                        "url": httpResponse.url?.absoluteString ?? "unknown",
-                        "method": method.rawValue,
-                        "endpoint": endpoint,
-                        "fullURL": url.absoluteString
-                    ])
+                    debugLog("❌ 🔍 Not Found - Resource doesn't exist")
+                    debugLog("❌ ❌ 404 ERROR DETAILS [url=\(httpResponse.url?.absoluteString ?? "unknown"), method=\(method.rawValue), endpoint=\(endpoint), fullURL=\(url.absoluteString)]")
                     let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-                    RemoteLogger.shared.error("❌ 404 ERROR BODY: \(errorBody)")
+                    debugLog("❌ ❌ 404 ERROR BODY: \(errorBody)")
                     throw CCError.resourceNotFound
                 default:
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    RemoteLogger.shared.error("HTTP Error \(httpResponse.statusCode)", metadata: [
-                        "endpoint": endpoint,
-                        "errorBody": errorMessage
-                    ])
+                    debugLog("❌ HTTP Error \(httpResponse.statusCode) [endpoint=\(endpoint), errorBody=\(errorMessage)]")
                     throw CCError.httpError(statusCode: httpResponse.statusCode, message: errorMessage)
                 }
             }
@@ -497,9 +479,9 @@ public final class CCHTTPClient: ObservableObject {
             // Log the actual URL being used in the request, not the original URL
             // This helps us debug OAuth signature issues
             let requestURLString = request.url?.absoluteString ?? "No URL"
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(requestURLString)")
+            debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(requestURLString)")
             if let authHeader = request.value(forHTTPHeaderField: "Authorization") {
-                RemoteLogger.shared.debug("🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
+                debugLog("🔍 🔐 [CCHTTPClient] OAuth: \(String(authHeader.prefix(50)))...")
             }
         }
         
@@ -507,37 +489,25 @@ public final class CCHTTPClient: ObservableObject {
         return urlSession.dataTaskPublisher(for: request)
             .tryMap { [weak self] data, response in
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    RemoteLogger.shared.error("Invalid response type")
+                    debugLog("❌ Invalid response type")
                     throw CCError.invalidResponse
                 }
                 
                 // Log metrics response details
                 if endpoint.contains("metrics") || endpoint.contains("stats") {
                     let responseBody = String(data: data, encoding: .utf8) ?? "Unable to decode response"
-                    RemoteLogger.shared.debug("[CleverMetrics] HTTP Response", metadata: [
-                        "statusCode": "\(httpResponse.statusCode)",
-                        "endpoint": endpoint,
-                        "responseBody": responseBody.prefix(500).description,
-                        "headers": httpResponse.allHeaderFields.description
-                    ])
+                    debugLog("🔍 [CleverMetrics] HTTP Response [statusCode=\(httpResponse.statusCode), endpoint=\(endpoint), responseBody=\(responseBody.prefix(500).description), headers=\(httpResponse.allHeaderFields.description)]")
                 }
                 
                 // Log response details
-                RemoteLogger.shared.debug("📡 HTTP Response", metadata: [
-                    "statusCode": "\(httpResponse.statusCode)",
-                    "url": httpResponse.url?.absoluteString ?? "unknown",
-                    "headers": httpResponse.allHeaderFields.description
-                ])
+                debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown"), headers=\(httpResponse.allHeaderFields.description)]")
                 
                 // Check status code
                 switch httpResponse.statusCode {
                 case 200...299:
                     // Success - decode response
                     let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode as UTF-8"
-                    RemoteLogger.shared.debug("📦 Raw response data", metadata: [
-                        "size": "\(data.count) bytes",
-                        "preview": String(rawResponse.prefix(500))
-                    ])
+                    debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(rawResponse.prefix(500))]")
 
                     do {
                         let decoder = JSONDecoder()
@@ -545,38 +515,25 @@ public final class CCHTTPClient: ObservableObject {
                         let decodedResponse = try decoder.decode(T.self, from: data)
                         return decodedResponse
                     } catch {
-                        RemoteLogger.shared.error("❌ JSON Decoding Error", metadata: [
-                            "error": error.localizedDescription,
-                            "type": String(describing: T.self),
-                            "rawData": rawResponse,
-                            "decodingError": String(describing: error)
-                        ])
+                        debugLog("❌ ❌ JSON Decoding Error [error=\(error.localizedDescription), type=\(T.self), rawData=\(rawResponse), decodingError=\(error)]")
                         throw CCError.parsingError(error)
                     }
                     
                 case 401:
-                    RemoteLogger.shared.error("🔒 Unauthorized - OAuth token may be invalid")
+                    debugLog("❌ 🔒 Unauthorized - OAuth token may be invalid")
                     throw CCError.authenticationFailed
                     
                 case 404:
-                    RemoteLogger.shared.error("🔍 Not Found - Resource doesn't exist")
+                    debugLog("❌ 🔍 Not Found - Resource doesn't exist")
                     // Add detailed error logging for debugging
-                    RemoteLogger.shared.error("❌ 404 ERROR DETAILS", metadata: [
-                        "url": httpResponse.url?.absoluteString ?? "unknown",
-                        "method": method.rawValue,
-                        "endpoint": endpoint,
-                        "fullURL": url.absoluteString
-                    ])
+                    debugLog("❌ ❌ 404 ERROR DETAILS [url=\(httpResponse.url?.absoluteString ?? "unknown"), method=\(method.rawValue), endpoint=\(endpoint), fullURL=\(url.absoluteString)]")
                     let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-                    RemoteLogger.shared.error("❌ 404 ERROR BODY: \(errorBody)")
+                    debugLog("❌ ❌ 404 ERROR BODY: \(errorBody)")
                     throw CCError.resourceNotFound
                     
                 default:
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    RemoteLogger.shared.error("[CleverMetrics] HTTP Error \(httpResponse.statusCode)", metadata: [
-                        "endpoint": endpoint,
-                        "errorBody": errorMessage
-                    ])
+                    debugLog("❌ [CleverMetrics] HTTP Error \(httpResponse.statusCode) [endpoint=\(endpoint), errorBody=\(errorMessage)]")
                     
                     // Enhanced logging for application creation errors
                     if endpoint.contains("applications") && method.rawValue == "POST" {
@@ -594,9 +551,9 @@ public final class CCHTTPClient: ObservableObject {
                 if let ccError = error as? CCError {
                     return ccError
                 } else if error is DecodingError {
-                    RemoteLogger.shared.error("❌ DECODING ERROR: \(error.localizedDescription)")
+                    debugLog("❌ ❌ DECODING ERROR: \(error.localizedDescription)")
                     if let decodingError = error as? DecodingError {
-                        RemoteLogger.shared.error("❌ DECODING ERROR DETAILS: \(String(describing: decodingError))")
+                        debugLog("❌ ❌ DECODING ERROR DETAILS: \(String(describing: decodingError))")
                     }
                     return CCError.invalidResponse
                 } else {
@@ -635,7 +592,7 @@ public final class CCHTTPClient: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("🚀 [CCHTTPClient] \(method.rawValue) \(url) with Bearer token")
+            debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(url) with Bearer token")
         }
         
         // Perform request
@@ -646,11 +603,7 @@ public final class CCHTTPClient: ObservableObject {
                 }
                 
                 // Log response for debugging
-                RemoteLogger.shared.debug("📡 Bearer Token Response", metadata: [
-                    "statusCode": "\(httpResponse.statusCode)",
-                    "endpoint": endpoint,
-                    "url": url.absoluteString
-                ])
+                debugLog("🔍 📡 Bearer Token Response [statusCode=\(httpResponse.statusCode), endpoint=\(endpoint), url=\(url.absoluteString)]")
                 
                 switch httpResponse.statusCode {
                 case 200...299:
@@ -661,7 +614,7 @@ public final class CCHTTPClient: ObservableObject {
                     return decodedResponse
                     
                 case 401:
-                    RemoteLogger.shared.error("🔒 Unauthorized - Bearer token may be invalid")
+                    debugLog("❌ 🔒 Unauthorized - Bearer token may be invalid")
                     throw CCError.authenticationFailed
                     
                 case 404:
@@ -669,10 +622,7 @@ public final class CCHTTPClient: ObservableObject {
                     
                 default:
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    RemoteLogger.shared.error("HTTP Error \(httpResponse.statusCode)", metadata: [
-                        "endpoint": endpoint,
-                        "errorBody": errorMessage
-                    ])
+                    debugLog("❌ HTTP Error \(httpResponse.statusCode) [endpoint=\(endpoint), errorBody=\(errorMessage)]")
                     throw CCError.httpError(statusCode: httpResponse.statusCode, message: errorMessage)
                 }
             }
@@ -704,13 +654,7 @@ public final class CCHTTPClient: ObservableObject {
 
         // Log URL construction for debugging
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("[CCHTTPClient] Building URL", metadata: [
-                "baseURL": baseURL,
-                "endpoint": endpoint,
-                "cleanEndpoint": cleanEndpoint,
-                "finalURL": urlString,
-                "apiVersion": apiVersion == .v2 ? "v2" : "v4"
-            ])
+            debugLog("🔍 [CCHTTPClient] Building URL [baseURL=\(baseURL), endpoint=\(endpoint), cleanEndpoint=\(cleanEndpoint), finalURL=\(urlString), apiVersion=\(apiVersion == .v2 ? "v2" : "v4")]")
         }
 
         return URL(string: urlString)
@@ -728,7 +672,7 @@ public final class CCHTTPClient: ObservableObject {
         }
         
         if configuration.enableDebugLogging {
-            RemoteLogger.shared.debug("📡 [CCHTTPClient] Response: \(httpResponse.statusCode) (\(data.count) bytes)")
+            debugLog("🔍 📡 [CCHTTPClient] Response: \(httpResponse.statusCode) (\(data.count) bytes)")
             
                     // Raw JSON response available for debugging if needed
         }

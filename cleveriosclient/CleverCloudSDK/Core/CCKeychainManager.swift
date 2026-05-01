@@ -48,13 +48,13 @@ final class CCKeychainManager: @unchecked Sendable {
             // Add new item
             let status = SecItemAdd(saveQuery as CFDictionary, nil)
             if status == errSecSuccess {
-                RemoteLogger.shared.info("✅ CCKeychainManager: CLI credentials stored successfully")
+                debugLog("ℹ️ ✅ CCKeychainManager: CLI credentials stored successfully")
             } else {
-                RemoteLogger.shared.error("❌ CCKeychainManager: Failed to store CLI credentials")
+                debugLog("❌ ❌ CCKeychainManager: Failed to store CLI credentials")
             }
             return status == errSecSuccess
         } catch {
-            RemoteLogger.shared.error("❌ CCKeychainManager: Failed to encode credentials: \(error)")
+            debugLog("❌ ❌ CCKeychainManager: Failed to encode credentials: \(error)")
             return false
         }
     }
@@ -80,7 +80,7 @@ final class CCKeychainManager: @unchecked Sendable {
         do {
             return try JSONDecoder().decode(OAuthCredentials.self, from: data)
         } catch {
-            RemoteLogger.shared.error("❌ CCKeychainManager: Failed to decode credentials: \(error)")
+            debugLog("❌ ❌ CCKeychainManager: Failed to decode credentials: \(error)")
             return nil
         }
     }
@@ -94,7 +94,7 @@ final class CCKeychainManager: @unchecked Sendable {
         ]
         
         SecItemDelete(query as CFDictionary)
-        RemoteLogger.shared.info("🗑️ CCKeychainManager: CLI credentials deleted")
+        debugLog("ℹ️ 🗑️ CCKeychainManager: CLI credentials deleted")
     }
     
     // MARK: - Status Check
@@ -164,12 +164,12 @@ extension CCKeychainManager {
         let hasStoredCredentials = hasStoredCredentials
         
         if let credentials = loadCredentials() {
-            RemoteLogger.shared.debug("🔐 KEYCHAIN STATUS:")
-            RemoteLogger.shared.debug("   CLI Token: \(credentials.token.prefix(10))...")
-            RemoteLogger.shared.debug("   Token Secret: \(credentials.secret.prefix(10))...")
-            RemoteLogger.shared.debug("   Has Valid Credentials: \(hasStoredCredentials)")
+            debugLog("🔍 🔐 KEYCHAIN STATUS:")
+            debugLog("🔍    CLI Token: \(credentials.token.prefix(10))...")
+            debugLog("🔍    Token Secret: \(credentials.secret.prefix(10))...")
+            debugLog("🔍    Has Valid Credentials: \(hasStoredCredentials)")
         } else {
-            RemoteLogger.shared.debug("🔐 KEYCHAIN STATUS: No credentials stored")
+            debugLog("🔍 🔐 KEYCHAIN STATUS: No credentials stored")
         }
     }
 } 

@@ -73,12 +73,7 @@ final class CCOAuthService: NSObject {
            !credentials.secret.isEmpty {
             isAuthenticated = true
             if configuration.enableDebugLogging {
-                RemoteLogger.shared.info("🔐 Found valid credentials in keychain", metadata: [
-                    "hasToken": "yes",
-                    "hasSecret": "yes",
-                    "tokenLength": "\(credentials.token.count)",
-                    "secretLength": "\(credentials.secret.count)"
-                ])
+                debugLog("ℹ️ 🔐 Found valid credentials in keychain [hasToken=yes, hasSecret=yes, tokenLength=\(credentials.token.count), secretLength=\(credentials.secret.count)]")
             }
         } else {
             isAuthenticated = false
@@ -87,17 +82,14 @@ final class CCOAuthService: NSObject {
             if let credentials = keychainManager.loadCredentials() {
                 // Found credentials but they are invalid/empty
                 if configuration.enableDebugLogging {
-                    RemoteLogger.shared.warn("🔐 Found invalid/empty credentials in keychain", metadata: [
-                        "tokenEmpty": credentials.token.isEmpty ? "yes" : "no",
-                        "secretEmpty": credentials.secret.isEmpty ? "yes" : "no"
-                    ])
+                    debugLog("⚠️ 🔐 Found invalid/empty credentials in keychain [tokenEmpty=\(credentials.token.isEmpty ? "yes" : "no"), secretEmpty=\(credentials.secret.isEmpty ? "yes" : "no")]")
                 }
                 // Clean up invalid credentials
-                RemoteLogger.shared.info("🧹 Cleaning up invalid credentials from keychain")
+                debugLog("ℹ️ 🧹 Cleaning up invalid credentials from keychain")
                 keychainManager.deleteCredentials()
             } else {
                 if configuration.enableDebugLogging {
-                    RemoteLogger.shared.info("🔐 No credentials found in keychain")
+                    debugLog("ℹ️ 🔐 No credentials found in keychain")
                 }
             }
         }
@@ -116,7 +108,7 @@ final class CCOAuthService: NSObject {
             debugLog("🔐 Starting CLI token authentication...")
         }
         
-        RemoteLogger.shared.info("🚀 Starting OAuth authentication flow")
+        debugLog("ℹ️ 🚀 Starting OAuth authentication flow")
         
         // 1. Générer un CLI token aléatoire (comme clever-tools)
         let cliToken = generateRandomCLIToken()
@@ -126,16 +118,13 @@ final class CCOAuthService: NSObject {
             debugLog("🔐 Generated CLI token: \(cliToken)")
         }
         
-        RemoteLogger.shared.debug("🔑 Generated CLI token", metadata: [
-            "tokenLength": "\(cliToken.count)",
-            "tokenPrefix": String(cliToken.prefix(10)) + "..."
-        ])
+        debugLog("🔍 🔑 Generated CLI token [tokenLength=\(cliToken.count), tokenPrefix=\(String(cliToken.prefix(10)) + "...")]")
         
         // 2. Construire l'URL de la console (comme clever-tools)
         guard let consoleURL = buildConsoleURL(cliToken: cliToken) else {
             authError = "Failed to build console URL"
             isAuthenticating = false
-            RemoteLogger.shared.error("❌ Failed to build console URL")
+            debugLog("❌ ❌ Failed to build console URL")
             return
         }
         
@@ -143,9 +132,7 @@ final class CCOAuthService: NSObject {
             debugLog("🔐 Opening console URL: \(consoleURL)")
         }
         
-        RemoteLogger.shared.info("🌐 Console URL built", metadata: [
-            "url": consoleURL.absoluteString
-        ])
+        debugLog("ℹ️ 🌐 Console URL built [url=\(consoleURL.absoluteString)]")
         
         // 3. Ouvrir Safari pour l'authentification
         openSafariForAuthentication(url: consoleURL)
@@ -180,9 +167,7 @@ final class CCOAuthService: NSObject {
     
     /// Ouvre Safari pour l'authentification
     private func openSafariForAuthentication(url: URL) {
-        RemoteLogger.shared.info("🌐 Attempting to open Safari for authentication", metadata: [
-            "url": url.absoluteString
-        ])
+        debugLog("ℹ️ 🌐 Attempting to open Safari for authentication [url=\(url.absoluteString)]")
         
         // Configure Safari with ephemeral session to avoid cross-site tracking issues
         let safariConfig = SFSafariViewController.Configuration()
@@ -214,16 +199,14 @@ final class CCOAuthService: NSObject {
                 presentingVC = presented
             }
             
-            RemoteLogger.shared.debug("🌐 Presenting Safari from view controller", metadata: [
-                "viewController": String(describing: type(of: presentingVC))
-            ])
+            debugLog("🔍 🌐 Presenting Safari from view controller [viewController=\(type(of: presentingVC))]")
             
             presentingVC.present(safariVC, animated: true)
             self.safariViewController = safariVC
             
-            RemoteLogger.shared.info("✅ Safari presented successfully for authentication")
+            debugLog("ℹ️ ✅ Safari presented successfully for authentication")
         } else {
-            RemoteLogger.shared.error("❌ Failed to present Safari - no root view controller found")
+            debugLog("❌ ❌ Failed to present Safari - no root view controller found")
             handleAuthenticationError("Failed to open authentication browser")
         }
     }
@@ -232,11 +215,7 @@ final class CCOAuthService: NSObject {
     private func startPollingForTokens(cliToken: String) {
         pollingTask?.cancel()
         
-        RemoteLogger.shared.info("🔄 Starting token polling", metadata: [
-            "cliToken": String(cliToken.prefix(10)) + "...",
-            "maxAttempts": "\(CLIAuth.maxPollingAttempts)",
-            "interval": "\(CLIAuth.pollingInterval)s"
-        ])
+        debugLog("ℹ️ 🔄 Starting token polling [cliToken=\(String(cliToken.prefix(10)) + "..."), maxAttempts=\(CLIAuth.maxPollingAttempts), interval=\(CLIAuth.pollingInterval)s]")
         
         pollingTask = Task {
             var attempts = 0
@@ -248,20 +227,13 @@ final class CCOAuthService: NSObject {
                     debugLog("🔐 Polling attempt \(attempts)/\(CLIAuth.maxPollingAttempts)")
                 }
                 
-                RemoteLogger.shared.debug("🔄 Polling attempt", metadata: [
-                    "attempt": "\(attempts)",
-                    "maxAttempts": "\(CLIAuth.maxPollingAttempts)"
-                ])
+                debugLog("🔍 🔄 Polling attempt [attempt=\(attempts), maxAttempts=\(CLIAuth.maxPollingAttempts)]")
                 
                 // Faire la requête de polling
                 do {
                     if let tokens = try await pollForTokens(cliToken: cliToken) {
                         // Tokens reçus !
-                        RemoteLogger.shared.info("✅ Tokens received from polling!", metadata: [
-                            "attempt": "\(attempts)",
-                            "tokenLength": "\(tokens.token.count)",
-                            "secretLength": "\(tokens.secret.count)"
-                        ])
+                        debugLog("ℹ️ ✅ Tokens received from polling! [attempt=\(attempts), tokenLength=\(tokens.token.count), secretLength=\(tokens.secret.count)]")
                         await MainActor.run {
                             handleTokensReceived(tokens)
                         }
@@ -272,17 +244,11 @@ final class CCOAuthService: NSObject {
                         debugLog("🔐 Polling error: \(error.localizedDescription)")
                     }
                     
-                    RemoteLogger.shared.error("❌ Polling error", metadata: [
-                        "attempt": "\(attempts)",
-                        "error": error.localizedDescription,
-                        "errorType": String(describing: type(of: error))
-                    ])
+                    debugLog("❌ ❌ Polling error [attempt=\(attempts), error=\(error.localizedDescription), errorType=\(type(of: error))]")
                     
                     // Si c'est pas une 404, c'est une vraie erreur
                     if !error.localizedDescription.contains("404") {
-                        RemoteLogger.shared.error("❌ Non-404 error, stopping polling", metadata: [
-                            "error": error.localizedDescription
-                        ])
+                        debugLog("❌ ❌ Non-404 error, stopping polling [error=\(error.localizedDescription)]")
                         await MainActor.run {
                             handleAuthenticationError("Network error: \(error.localizedDescription)")
                         }
@@ -295,20 +261,14 @@ final class CCOAuthService: NSObject {
                     if configuration.enableDebugLogging {
                         debugLog("🔐 Still waiting for authentication completion...")
                     }
-                    RemoteLogger.shared.info("⏳ Still polling for tokens", metadata: [
-                        "attempts": "\(attempts)",
-                        "timeElapsed": "\(Double(attempts) * CLIAuth.pollingInterval)s"
-                    ])
+                    debugLog("ℹ️ ⏳ Still polling for tokens [attempts=\(attempts), timeElapsed=\(Double(attempts) * CLIAuth.pollingInterval)s]")
                 }
                 
                 try? await Task.sleep(nanoseconds: UInt64(CLIAuth.pollingInterval * 1_000_000_000))
             }
             
             // Timeout atteint
-            RemoteLogger.shared.error("❌ Polling timeout reached", metadata: [
-                "totalAttempts": "\(attempts)",
-                "totalTime": "\(Double(attempts) * CLIAuth.pollingInterval)s"
-            ])
+            debugLog("❌ ❌ Polling timeout reached [totalAttempts=\(attempts), totalTime=\(Double(attempts) * CLIAuth.pollingInterval)s]")
             await MainActor.run {
                 handleAuthenticationError("Authentication timeout. Please try again.")
             }
@@ -340,17 +300,12 @@ final class CCOAuthService: NSObject {
             debugLog("🔐 Polling URL: \(url)")
         }
         
-        RemoteLogger.shared.debug("🌐 Making polling request", metadata: [
-            "url": url.absoluteString,
-            "method": "GET"
-        ])
+        debugLog("🔍 🌐 Making polling request [url=\(url.absoluteString), method=GET]")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            RemoteLogger.shared.error("❌ Invalid response type", metadata: [
-                "responseType": String(describing: type(of: response))
-            ])
+            debugLog("❌ ❌ Invalid response type [responseType=\(type(of: response))]")
             throw NSError(domain: "CCOAuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
         }
         
@@ -358,24 +313,17 @@ final class CCOAuthService: NSObject {
             debugLog("🔐 Polling response status: \(httpResponse.statusCode)")
         }
         
-        RemoteLogger.shared.debug("📡 Polling response received", metadata: [
-            "statusCode": "\(httpResponse.statusCode)",
-            "contentLength": "\(data.count)"
-        ])
+        debugLog("🔍 📡 Polling response received [statusCode=\(httpResponse.statusCode), contentLength=\(data.count)]")
         
         if httpResponse.statusCode == 404 {
             // Pas encore de tokens, continuer le polling
-            RemoteLogger.shared.debug("⏳ 404 - Tokens not ready yet")
+            debugLog("🔍 ⏳ 404 - Tokens not ready yet")
             return nil
         }
         
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            RemoteLogger.shared.error("❌ Polling failed", metadata: [
-                "statusCode": "\(httpResponse.statusCode)",
-                "errorMessage": errorMessage,
-                "responseBody": String(data: data, encoding: .utf8) ?? "Unable to decode"
-            ])
+            debugLog("❌ ❌ Polling failed [statusCode=\(httpResponse.statusCode), errorMessage=\(errorMessage), responseBody=\(String(data: data, encoding: .utf8) ?? "Unable to decode")]")
             throw NSError(domain: "CCOAuthService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
         }
         
@@ -387,10 +335,7 @@ final class CCOAuthService: NSObject {
                 debugLog("🔐 Tokens received successfully!")
             }
             
-            RemoteLogger.shared.info("✅ Successfully decoded token response", metadata: [
-                "hasToken": "yes",
-                "hasSecret": "yes"
-            ])
+            debugLog("ℹ️ ✅ Successfully decoded token response [hasToken=yes, hasSecret=yes]")
             
             return OAuthCredentials(
                 token: tokenResponse.token,
@@ -401,11 +346,7 @@ final class CCOAuthService: NSObject {
                 debugLog("🔐 JSON parsing error: \(error)")
                 debugLog("🔐 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
             }
-            RemoteLogger.shared.error("❌ Failed to decode token response", metadata: [
-                "error": error.localizedDescription,
-                "responseBody": String(data: data, encoding: .utf8) ?? "Unable to decode",
-                "dataSize": "\(data.count)"
-            ])
+            debugLog("❌ ❌ Failed to decode token response [error=\(error.localizedDescription), responseBody=\(String(data: data, encoding: .utf8) ?? "Unable to decode"), dataSize=\(data.count)]")
             throw error
         }
     }
@@ -450,11 +391,7 @@ final class CCOAuthService: NSObject {
         authError = message
         isAuthenticating = false
         
-        RemoteLogger.shared.error("❌ Authentication failed", metadata: [
-            "error": message,
-            "hadSafariOpen": safariViewController != nil ? "yes" : "no",
-            "wasPolling": pollingTask != nil ? "yes" : "no"
-        ])
+        debugLog("❌ ❌ Authentication failed [error=\(message), hadSafariOpen=\(safariViewController != nil ? "yes" : "no"), wasPolling=\(pollingTask != nil ? "yes" : "no")]")
         
         // Fermer Safari
         safariViewController?.dismiss(animated: true)
@@ -476,18 +413,14 @@ extension CCOAuthService: SFSafariViewControllerDelegate {
         // Safari closed (either by user or automatically after auth)
         Task {
             await MainActor.run {
-                RemoteLogger.shared.warn("⚠️ Safari dismissed", metadata: [
-                    "wasAuthenticating": isAuthenticating ? "yes" : "no"
-                ])
+                debugLog("⚠️ ⚠️ Safari dismissed [wasAuthenticating=\(isAuthenticating ? "yes" : "no")]")
                 
                 // IMPORTANT: Don't cancel polling immediately!
                 // Safari might close automatically after successful authentication
                 // Let the polling continue to check if tokens were generated
                 
                 if isAuthenticating {
-                    RemoteLogger.shared.info("🔄 Safari closed but continuing to poll for tokens...", metadata: [
-                        "reason": "Safari might close automatically after successful auth"
-                    ])
+                    debugLog("ℹ️ 🔄 Safari closed but continuing to poll for tokens... [reason=Safari might close automatically after successful auth]")
                     
                     // Just clear the Safari reference, but don't stop polling
                     safariViewController = nil

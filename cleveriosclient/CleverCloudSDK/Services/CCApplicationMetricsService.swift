@@ -74,31 +74,22 @@ public class CCApplicationMetricsService: ObservableObject {
         // Use OAuth 1.0a directly (same as JS SDK) instead of Bearer token
         return httpClient.getRawData(fullEndpoint, apiVersion: .v4)
         .tryMap { data in
-            RemoteLogger.shared.debug("[CleverMetrics] getApplicationMetrics response", metadata: [
-                "dataSize": "\(data.count) bytes",
-                "endpoint": fullEndpoint
-            ])
+            debugLog("🔍 [CleverMetrics] getApplicationMetrics response [dataSize=\(data.count) bytes, endpoint=\(fullEndpoint)]")
             
             // Log the raw response to understand the format
             if let jsonString = String(data: data, encoding: .utf8) {
-                RemoteLogger.shared.debug("[CleverMetrics] Raw metrics API response", metadata: [
-                    "response": jsonString.prefix(1000).description
-                ])
+                debugLog("🔍 [CleverMetrics] Raw metrics API response [response=\(jsonString.prefix(1000).description)]")
             }
             
             // Parse the actual metrics response format
             // The API likely returns time series data, not a single metrics object
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                RemoteLogger.shared.debug("[CleverMetrics] Successfully parsed JSON", metadata: [
-                    "keys": json.keys.joined(separator: ", ")
-                ])
+                debugLog("🔍 [CleverMetrics] Successfully parsed JSON [keys=\(json.keys.joined(separator: ", "))]")
                 
                 // Create metrics from the actual response
                 return self.parseMetricsResponse(json: json, applicationId: applicationId)
             } else {
-                RemoteLogger.shared.error("[CleverMetrics] Invalid JSON format", metadata: [
-                    "error": "Response is not a dictionary"
-                ])
+                debugLog("❌ [CleverMetrics] Invalid JSON format [error=Response is not a dictionary]")
                 throw CCError.parsingError(NSError(domain: "CCApplicationMetricsService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid metrics response format"]))
             }
         }
@@ -180,18 +171,11 @@ public class CCApplicationMetricsService: ObservableObject {
 
         return httpClient.getRawData(fullEndpoint, apiVersion: .v4)
             .tryMap { data in
-                RemoteLogger.shared.debug("[CleverMetrics] getApplicationTimeSeries response", metadata: [
-                    "dataSize": "\(data.count) bytes",
-                    "endpoint": fullEndpoint,
-                    "metric": metric.rawValue
-                ])
+                debugLog("🔍 [CleverMetrics] getApplicationTimeSeries response [dataSize=\(data.count) bytes, endpoint=\(fullEndpoint), metric=\(metric.rawValue)]")
 
                 // Log the raw response to understand the format
                 if let jsonString = String(data: data, encoding: .utf8) {
-                    RemoteLogger.shared.debug("[CleverMetrics] Raw time series response", metadata: [
-                        "metric": metric.rawValue,
-                        "response": jsonString.prefix(1000).description
-                    ])
+                    debugLog("🔍 [CleverMetrics] Raw time series response [metric=\(metric.rawValue), response=\(jsonString.prefix(1000).description)]")
                 }
 
                 // Parse the time series response
@@ -450,30 +434,19 @@ public class CCApplicationMetricsService: ObservableObject {
         var networkIn: Int64 = 0
         var networkOut: Int64 = 0
         
-        RemoteLogger.shared.debug("[CleverMetrics] parseMetricsResponse JSON keys", metadata: [
-            "keys": json.keys.joined(separator: ", ")
-        ])
+        debugLog("🔍 [CleverMetrics] parseMetricsResponse JSON keys [keys=\(json.keys.joined(separator: ", "))]")
         
         // The API returns time series data with different metric types
         // We need to find the latest value for each metric
         if let metrics = json["metrics"] as? [[String: Any]] {
-            RemoteLogger.shared.debug("[CleverMetrics] Found metrics array", metadata: [
-                "count": "\(metrics.count)"
-            ])
+            debugLog("🔍 [CleverMetrics] Found metrics array [count=\(metrics.count)]")
             
             for (index, metric) in metrics.enumerated() {
                 if let metricName = metric["name"] as? String {
-                    RemoteLogger.shared.debug("[CleverMetrics] Metric \(index)", metadata: [
-                        "name": metricName,
-                        "hasValues": "\(metric["values"] != nil)"
-                    ])
+                    debugLog("🔍 [CleverMetrics] Metric \(index) [name=\(metricName), hasValues=\("\(metric["values"] != nil)")]")
                     
                     if let values = metric["values"] as? [[Any]] {
-                        RemoteLogger.shared.debug("[CleverMetrics] Metric '\(metricName)' values", metadata: [
-                            "count": "\(values.count)",
-                            "firstValue": values.first.map { String(describing: $0) } ?? "none",
-                            "lastValue": values.last.map { String(describing: $0) } ?? "none"
-                        ])
+                        debugLog("🔍 [CleverMetrics] Metric '\(metricName)' values [count=\(values.count), firstValue=\(values.first.map { String(describing: $0) } ?? "none"), lastValue=\(values.last.map { String(describing: $0) } ?? "none")]")
                         
                         if let lastValue = values.last,
                            lastValue.count >= 2,
@@ -482,18 +455,18 @@ public class CCApplicationMetricsService: ObservableObject {
                             switch metricName {
                             case "cpu", "cpu.percent", "cpu_usage":
                                 cpuUsage = value
-                                RemoteLogger.shared.debug("[CleverMetrics] Set CPU usage", metadata: ["value": "\(value)"])
+                                debugLog("🔍 [CleverMetrics] Set CPU usage [value=\(value)]")
                             case "mem", "memory", "mem.available", "memory_usage":
                                 memoryUsage = value
-                                RemoteLogger.shared.debug("[CleverMetrics] Set memory usage", metadata: ["value": "\(value)"])
+                                debugLog("🔍 [CleverMetrics] Set memory usage [value=\(value)]")
                             case "net_in", "net.in.bytes", "network_in":
                                 networkIn = Int64(value)
-                                RemoteLogger.shared.debug("[CleverMetrics] Set network in", metadata: ["value": "\(value)"])
+                                debugLog("🔍 [CleverMetrics] Set network in [value=\(value)]")
                             case "net_out", "net.out.bytes", "network_out":
                                 networkOut = Int64(value)
-                                RemoteLogger.shared.debug("[CleverMetrics] Set network out", metadata: ["value": "\(value)"])
+                                debugLog("🔍 [CleverMetrics] Set network out [value=\(value)]")
                             default:
-                                RemoteLogger.shared.debug("[CleverMetrics] Unknown metric", metadata: ["name": metricName])
+                                debugLog("🔍 [CleverMetrics] Unknown metric [name=\(metricName)]")
                                 break
                             }
                         }
@@ -501,24 +474,18 @@ public class CCApplicationMetricsService: ObservableObject {
                 }
             }
         } else {
-            RemoteLogger.shared.debug("[CleverMetrics] No metrics array found in response")
+            debugLog("🔍 [CleverMetrics] No metrics array found in response")
         }
         
         // Alternative format: direct time series arrays
         if let cpuData = json["cpu"] as? [[Any]] {
-            RemoteLogger.shared.debug("[CleverMetrics] Found direct CPU data", metadata: [
-                "count": "\(cpuData.count)",
-                "lastValue": cpuData.last.map { String(describing: $0) } ?? "none"
-            ])
+            debugLog("🔍 [CleverMetrics] Found direct CPU data [count=\(cpuData.count), lastValue=\(cpuData.last.map { String(describing: $0) } ?? "none")]")
             if let lastCpu = cpuData.last, lastCpu.count >= 2 {
                 cpuUsage = (lastCpu[1] as? Double) ?? 0.0
             }
         }
         if let memData = json["memory"] as? [[Any]] {
-            RemoteLogger.shared.debug("[CleverMetrics] Found direct memory data", metadata: [
-                "count": "\(memData.count)",
-                "lastValue": memData.last.map { String(describing: $0) } ?? "none"
-            ])
+            debugLog("🔍 [CleverMetrics] Found direct memory data [count=\(memData.count), lastValue=\(memData.last.map { String(describing: $0) } ?? "none")]")
             if let lastMem = memData.last, lastMem.count >= 2 {
                 memoryUsage = (lastMem[1] as? Double) ?? 0.0
             }
@@ -526,21 +493,13 @@ public class CCApplicationMetricsService: ObservableObject {
         
         // Also check for "mem" key
         if let memData = json["mem"] as? [[Any]] {
-            RemoteLogger.shared.debug("[CleverMetrics] Found direct mem data", metadata: [
-                "count": "\(memData.count)",
-                "lastValue": memData.last.map { String(describing: $0) } ?? "none"
-            ])
+            debugLog("🔍 [CleverMetrics] Found direct mem data [count=\(memData.count), lastValue=\(memData.last.map { String(describing: $0) } ?? "none")]")
             if let lastMem = memData.last, lastMem.count >= 2 {
                 memoryUsage = (lastMem[1] as? Double) ?? 0.0
             }
         }
         
-        RemoteLogger.shared.debug("[CleverMetrics] Final parsed values", metadata: [
-            "cpuUsage": "\(cpuUsage)",
-            "memoryUsage": "\(memoryUsage)",
-            "networkIn": "\(networkIn)",
-            "networkOut": "\(networkOut)"
-        ])
+        debugLog("🔍 [CleverMetrics] Final parsed values [cpuUsage=\(cpuUsage), memoryUsage=\(memoryUsage), networkIn=\(networkIn), networkOut=\(networkOut)]")
         
         return CCApplicationMetrics(
             id: UUID().uuidString,
@@ -561,15 +520,10 @@ public class CCApplicationMetricsService: ObservableObject {
     private func parseTimeSeriesResponse(data: Data, metricType: MetricType, totalMemoryMB: Double = 512.0) throws -> [CCApplicationMetricPoint] {
         var points: [CCApplicationMetricPoint] = []
 
-        RemoteLogger.shared.debug("[CleverMetrics] parseTimeSeriesResponse", metadata: [
-            "dataSize": "\(data.count) bytes",
-            "metricType": metricType.rawValue
-        ])
+        debugLog("🔍 [CleverMetrics] parseTimeSeriesResponse [dataSize=\(data.count) bytes, metricType=\(metricType.rawValue)]")
 
         if let rawString = String(data: data, encoding: .utf8) {
-            RemoteLogger.shared.debug("[CleverMetrics] Raw response string", metadata: [
-                "response": rawString.prefix(1000).description
-            ])
+            debugLog("🔍 [CleverMetrics] Raw response string [response=\(rawString.prefix(1000).description)]")
         }
 
         // Parse top-level JSON - handle both array and dictionary formats
@@ -581,23 +535,15 @@ public class CCApplicationMetricsService: ObservableObject {
             // Single metric object wrapped in a dictionary
             metricsArray = [dict]
         } else {
-            RemoteLogger.shared.error("[CleverMetrics] Failed to parse JSON", metadata: [
-                "error": "Response is not an array or dictionary",
-                "type": "\(type(of: jsonObject))"
-            ])
+            debugLog("❌ [CleverMetrics] Failed to parse JSON [error=Response is not an array or dictionary, type=\(type(of: jsonObject))]")
             return []
         }
         
-        RemoteLogger.shared.debug("[CleverMetrics] Parsed metrics array", metadata: [
-            "count": "\(metricsArray.count)"
-        ])
+        debugLog("🔍 [CleverMetrics] Parsed metrics array [count=\(metricsArray.count)]")
         
         // Log all available metric names for debugging
         let availableMetrics = metricsArray.compactMap { $0["name"] as? String }
-        RemoteLogger.shared.debug("[CleverMetrics] Available metrics", metadata: [
-            "metrics": availableMetrics.joined(separator: ", "),
-            "searchingFor": metricType.rawValue
-        ])
+        debugLog("🔍 [CleverMetrics] Available metrics [metrics=\(availableMetrics.joined(separator: ", ")), searchingFor=\(metricType.rawValue)]")
 
         // Special logging for network metrics to understand what's available
         if metricType == .networkIn || metricType == .networkOut {
@@ -607,20 +553,13 @@ public class CCApplicationMetricsService: ObservableObject {
                        lowercaseName.contains("rx") || lowercaseName.contains("tx") ||
                        lowercaseName.contains("in") || lowercaseName.contains("out")
             }
-            RemoteLogger.shared.debug("[CleverMetrics] Network-related metrics found", metadata: [
-                "networkMetrics": networkMetrics.joined(separator: ", "),
-                "count": "\(networkMetrics.count)"
-            ])
+            debugLog("🔍 [CleverMetrics] Network-related metrics found [networkMetrics=\(networkMetrics.joined(separator: ", ")), count=\(networkMetrics.count)]")
         }
         
         // The v4 API returns: [{"name":"cpu","data":[{"timestamp":...,"value":"..."}],"unit":"...","resource":"..."}]
         for metric in metricsArray {
             if let name = metric["name"] as? String {
-                RemoteLogger.shared.debug("[CleverMetrics] Found metric", metadata: [
-                    "name": name,
-                    "hasData": "\(metric["data"] != nil)",
-                    "unit": metric["unit"] as? String ?? "unknown"
-                ])
+                debugLog("🔍 [CleverMetrics] Found metric [name=\(name), hasData=\("\(metric["data"] != nil)"), unit=\(metric["unit"] as? String ?? "unknown")]")
                 
                 // Check if this is the metric we're looking for
                 // For network metrics, we need to find the actual metric names
@@ -659,17 +598,12 @@ public class CCApplicationMetricsService: ObservableObject {
                 if isMatchingMetric,
                    let dataArray = metric["data"] as? [[String: Any]] {
                     
-                    RemoteLogger.shared.debug("[CleverMetrics] Processing metric data", metadata: [
-                        "name": name,
-                        "dataCount": "\(dataArray.count)"
-                    ])
+                    debugLog("🔍 [CleverMetrics] Processing metric data [name=\(name), dataCount=\(dataArray.count)]")
                     
                     // Parse each data point
                     for (index, dataPoint) in dataArray.enumerated() {
                         if index < 3 {
-                            RemoteLogger.shared.debug("[CleverMetrics] Data point \(index)", metadata: [
-                                "data": String(describing: dataPoint)
-                            ])
+                            debugLog("🔍 [CleverMetrics] Data point \(index) [data=\(dataPoint)]")
                         }
 
                         // Parse timestamp - handle Double, Int, and String types
@@ -727,19 +661,9 @@ public class CCApplicationMetricsService: ObservableObject {
         
         // If no points were parsed, log detailed error
         if points.isEmpty {
-            RemoteLogger.shared.error("[CleverMetrics] No data points parsed", metadata: [
-                "metricType": metricType.rawValue,
-                "availableMetrics": availableMetrics.joined(separator: ", "),
-                "rawDataSize": "\(data.count) bytes"
-            ])
+            debugLog("❌ [CleverMetrics] No data points parsed [metricType=\(metricType.rawValue), availableMetrics=\(availableMetrics.joined(separator: ", ")), rawDataSize=\(data.count) bytes]")
         } else {
-            RemoteLogger.shared.debug("[CleverMetrics] Successfully parsed data points", metadata: [
-                "count": "\(points.count)",
-                "firstTimestamp": points.first?.timestamp.description ?? "none",
-                "lastTimestamp": points.last?.timestamp.description ?? "none",
-                "firstValue": points.first?.value.description ?? "none",
-                "lastValue": points.last?.value.description ?? "none"
-            ])
+            debugLog("🔍 [CleverMetrics] Successfully parsed data points [count=\(points.count), firstTimestamp=\(points.first?.timestamp.description ?? "none"), lastTimestamp=\(points.last?.timestamp.description ?? "none"), firstValue=\(points.first?.value.description ?? "none"), lastValue=\(points.last?.value.description ?? "none")]")
         }
         
         // Sort points by timestamp

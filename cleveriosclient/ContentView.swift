@@ -241,7 +241,7 @@ struct ContentView: View {
         }
         .onChange(of: selectedOrganization) { oldValue, newValue in
             if let newOrg = newValue {
-                RemoteLogger.shared.info("🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
+                debugLog("ℹ️ 🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
                 autoRefreshOrganizationData(for: newOrg)
 
                 // On iPad, maintain current selection if possible
@@ -326,7 +326,7 @@ struct ContentView: View {
         }
         .onChange(of: selectedOrganization) { oldValue, newValue in
             if let newOrg = newValue {
-                RemoteLogger.shared.info("🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
+                debugLog("ℹ️ 🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
                 autoRefreshOrganizationData(for: newOrg)
             }
         }
@@ -789,7 +789,7 @@ struct ContentView: View {
     
     private func selectApplicationDetail(_ app: CCApplication) {
         debugLog("🎯 [iPad Navigation] Selecting application: \(app.name)")
-        RemoteLogger.shared.info("🎯 [iPad Navigation] Selecting application: \(app.name)")
+        debugLog("ℹ️ 🎯 [iPad Navigation] Selecting application: \(app.name)")
         
         // Check if we're doing an app-to-app transition
         let isAppToAppTransition = selectedDetailView == .applicationDetail && selectedApplicationForDetail != nil
@@ -822,7 +822,7 @@ struct ContentView: View {
     
     private func selectAddonDetail(_ addon: CCAddon) {
         debugLog("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
-        RemoteLogger.shared.info("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
+        debugLog("ℹ️ 🎯 [iPad Navigation] Selecting addon: \(addon.name)")
         
         // Update state atomically to avoid conflicts
         withAnimation(.easeInOut(duration: 0.2)) {
@@ -1555,10 +1555,10 @@ struct ContentView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             if favoriteOrgIds.contains(org.id) {
                 favoriteOrgIds.removeAll { $0 == org.id }
-                RemoteLogger.shared.info("⭐ Removed \(org.name) from favorites")
+                debugLog("ℹ️ ⭐ Removed \(org.name) from favorites")
             } else {
                 favoriteOrgIds.append(org.id)
-                RemoteLogger.shared.info("⭐ Added \(org.name) to favorites")
+                debugLog("ℹ️ ⭐ Added \(org.name) to favorites")
             }
             saveFavorites()
         }
@@ -1567,13 +1567,13 @@ struct ContentView: View {
     private func loadFavorites() {
         if let savedFavorites = UserDefaults.standard.array(forKey: "com.cleveriosclient.favoriteOrganizations") as? [String] {
             favoriteOrgIds = savedFavorites
-            RemoteLogger.shared.info("📱 Loaded \(savedFavorites.count) favorite organizations")
+            debugLog("ℹ️ 📱 Loaded \(savedFavorites.count) favorite organizations")
         }
     }
     
     private func saveFavorites() {
         UserDefaults.standard.set(favoriteOrgIds, forKey: "com.cleveriosclient.favoriteOrganizations")
-        RemoteLogger.shared.info("💾 Saved \(favoriteOrgIds.count) favorite organizations")
+        debugLog("ℹ️ 💾 Saved \(favoriteOrgIds.count) favorite organizations")
     }
     
     // MARK: - Methods
