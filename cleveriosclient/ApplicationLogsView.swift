@@ -20,10 +20,6 @@ struct ApplicationLogsView: View {
     @State private var cancellables = Set<AnyCancellable>()
     @State private var scrollViewProxy: ScrollViewProxy?
 
-    // Selection mode for "copy selected" — entered via long press on a log row.
-    @State private var isSelectionMode = false
-    @State private var selectedLogIDs: Set<UUID> = []
-
     /// Number of entries fetched on the very first load (recent logs only).
     private let initialLogsLimit = 50
     /// Hard cap on the rolling buffer; live-tail keeps appending up to this size, oldest drop off.
@@ -106,7 +102,7 @@ struct ApplicationLogsView: View {
                     ScrollView {
                         LazyVStack(spacing: 1) {
                             ForEach(filteredLogs) { log in
-                                logRow(for: log)
+                                LogEntryRow(log: log)
                                     .id(log.id)
                             }
                         }
@@ -143,34 +139,18 @@ struct ApplicationLogsView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            if isSelectionMode {
-                Button("Cancel") {
-                    exitSelectionMode()
-                }
-                Spacer()
-                Text("\(selectedLogIDs.count) selected")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    copySelectedLogs()
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .disabled(selectedLogIDs.isEmpty)
-            } else {
-                Text(application.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                }
-                .accessibilityLabel("Close logs")
+            Text(application.name)
+                .font(.headline)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
             }
+            .accessibilityLabel("Close logs")
         }
         .padding(.horizontal)
         .padding(.top, 12)
@@ -291,70 +271,6 @@ struct ApplicationLogsView: View {
         .background(Color(.systemGray6))
     }
     
-    // MARK: - Selection
-
-    @ViewBuilder
-    private func logRow(for log: CCLogEntry) -> some View {
-        if isSelectionMode {
-            let isSelected = selectedLogIDs.contains(log.id)
-            HStack(spacing: 8) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .secondary)
-                    .font(.title3)
-                    .padding(.leading, 8)
-                LogEntryRow(log: log)
-            }
-            .background(isSelected ? Color.blue.opacity(0.12) : Color.clear)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                toggleSelection(log.id)
-            }
-        } else {
-            LogEntryRow(log: log)
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    enterSelectionMode(initiallySelecting: log.id)
-                }
-        }
-    }
-
-    private func enterSelectionMode(initiallySelecting id: UUID) {
-        selectedLogIDs = [id]
-        withAnimation(.easeInOut(duration: 0.15)) {
-            isSelectionMode = true
-        }
-    }
-
-    private func exitSelectionMode() {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            isSelectionMode = false
-        }
-        selectedLogIDs.removeAll()
-    }
-
-    private func toggleSelection(_ id: UUID) {
-        if selectedLogIDs.contains(id) {
-            selectedLogIDs.remove(id)
-        } else {
-            selectedLogIDs.insert(id)
-        }
-    }
-
-    private func copySelectedLogs() {
-        let chosen = filteredLogs.filter { selectedLogIDs.contains($0.id) }
-        guard !chosen.isEmpty else { return }
-        let text = chosen
-            .sorted { $0.timestamp < $1.timestamp }
-            .map { entry -> String in
-                let ts = ISO8601DateFormatter().string(from: entry.timestamp)
-                let level = entry.level.rawValue.uppercased()
-                let source = entry.source.map { " [\($0)]" } ?? ""
-                return "\(ts) \(level)\(source) \(entry.message)"
-            }
-            .joined(separator: "\n")
-        UIPasteboard.general.string = text
-        exitSelectionMode()
-    }
-
     // MARK: - Helper Methods
 
     private func loadLogs() {

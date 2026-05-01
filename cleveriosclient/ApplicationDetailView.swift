@@ -1053,7 +1053,7 @@ struct ApplicationDetailView: View {
                 Text("Application Logs")
                     .font(.title2)
                     .fontWeight(.semibold)
-                Text("Live tail • up to 250 entries • long-press to select")
+                Text("Live tail • up to 250 entries")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
