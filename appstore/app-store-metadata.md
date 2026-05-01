@@ -66,7 +66,7 @@ DESIGNED FOR APPLE PLATFORMS
 
 PRIVACY FIRST
 
-No tracking. No analytics. No ads. The app only talks to Clever Cloud's official API and a small developer-operated diagnostic log endpoint (anonymous, opt-out by uninstall). Read the full privacy policy at the link below.
+No tracking. No analytics. No ads. No telemetry. The app's only network activity is talking to Clever Cloud's official API. Read the full privacy policy at the link below.
 
 OPEN SOURCE
 
@@ -159,8 +159,8 @@ App Store reviewers cannot sign up to Clever Cloud just to test your app — you
 
 Then in **App Store Connect → App Review Information → Sign-In required → YES**:
 
-- **Username:** `appreview-clevercloud@<yourdomain>` *(or whatever email you used)*
-- **Password:** *(strong, dedicated, not your personal password)*
+- **Username:** `appletesting@fredalix.com`
+- **Password:** *(from your password manager — never commit it)*
 
 In the **Notes** field:
 
