@@ -408,11 +408,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Clever iOS Client";
+				INFOPLIST_KEY_CFBundleDisplayName = "My Clever Client";
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLName = \"com.fredalix.cctoolkit.oauth\";\n    CFBundleURLSchemes =     (\n        \"com.fredalix.cctoolkit\"\n    );\n}";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -446,11 +446,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Clever iOS Client";
+				INFOPLIST_KEY_CFBundleDisplayName = "My Clever Client";
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLName = \"com.fredalix.cctoolkit.oauth\";\n    CFBundleURLSchemes =     (\n        \"com.fredalix.cctoolkit\"\n    );\n}";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
