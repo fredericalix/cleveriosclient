@@ -1,4 +1,4 @@
-# Clever Cloud iOS Admin App 📱
+# My Clever Client 📱
 
 A native iOS application for managing Clever Cloud applications and add-ons with a revolutionary graphical interface.
 

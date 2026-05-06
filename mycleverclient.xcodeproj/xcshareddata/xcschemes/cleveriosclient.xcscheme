@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C6A4F8B62E01751500FAEC72"
-               BuildableName = "cleveriosclient.app"
-               BlueprintName = "cleveriosclient"
-               ReferencedContainer = "container:cleveriosclient.xcodeproj">
+               BuildableName = "mycleverclient.app"
+               BlueprintName = "mycleverclient"
+               ReferencedContainer = "container:mycleverclient.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C6A4F8C52E01751700FAEC72"
-               BuildableName = "cleveriosclientTests.xctest"
-               BlueprintName = "cleveriosclientTests"
-               ReferencedContainer = "container:cleveriosclient.xcodeproj">
+               BuildableName = "mycleverclientTests.xctest"
+               BlueprintName = "mycleverclientTests"
+               ReferencedContainer = "container:mycleverclient.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -47,9 +47,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C6A4F8CF2E01751700FAEC72"
-               BuildableName = "cleveriosclientUITests.xctest"
-               BlueprintName = "cleveriosclientUITests"
-               ReferencedContainer = "container:cleveriosclient.xcodeproj">
+               BuildableName = "mycleverclientUITests.xctest"
+               BlueprintName = "mycleverclientUITests"
+               ReferencedContainer = "container:mycleverclient.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -70,9 +70,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C6A4F8B62E01751500FAEC72"
-            BuildableName = "cleveriosclient.app"
-            BlueprintName = "cleveriosclient"
-            ReferencedContainer = "container:cleveriosclient.xcodeproj">
+            BuildableName = "mycleverclient.app"
+            BlueprintName = "mycleverclient"
+            ReferencedContainer = "container:mycleverclient.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -87,9 +87,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C6A4F8B62E01751500FAEC72"
-            BuildableName = "cleveriosclient.app"
-            BlueprintName = "cleveriosclient"
-            ReferencedContainer = "container:cleveriosclient.xcodeproj">
+            BuildableName = "mycleverclient.app"
+            BlueprintName = "mycleverclient"
+            ReferencedContainer = "container:mycleverclient.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

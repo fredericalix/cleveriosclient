@@ -525,85 +525,9 @@ public class CCApplicationService: ObservableObject {
         return httpClient.getSSEData(endpoint, apiVersion: apiVersion, timeout: 10.0)
             .map { data -> [CCLogEntry] in
                 let sseText = String(data: data, encoding: .utf8) ?? ""
-                return self.parseSSELogEvents(sseText)
+                return CCLogEntry.parseSSEStream(sseText)
             }
             .eraseToAnyPublisher()
-    }
-
-    /// Parse SSE text into log entries
-    /// SSE format: "data:{json}\nevent:APPLICATION_LOG\nid:...\n\n"
-    private func parseSSELogEvents(_ sseText: String) -> [CCLogEntry] {
-        var entries: [CCLogEntry] = []
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        // Split by double newline (SSE event boundary)
-        let events = sseText.components(separatedBy: "\n\n")
-
-        for event in events {
-            let lines = event.components(separatedBy: "\n")
-
-            // Find the data line
-            var dataLine: String?
-            var eventType: String?
-
-            for line in lines {
-                if line.hasPrefix("data:") {
-                    dataLine = String(line.dropFirst(5))
-                } else if line.hasPrefix("event:") {
-                    eventType = String(line.dropFirst(6))
-                }
-            }
-
-            // Only parse APPLICATION_LOG events with data
-            guard let jsonString = dataLine, !jsonString.isEmpty,
-                  eventType == "APPLICATION_LOG" else {
-                continue
-            }
-
-            guard let jsonData = jsonString.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                  let message = json["message"] as? String else {
-                continue
-            }
-
-            // Parse date
-            let timestamp: Date
-            if let dateStr = json["date"] as? String {
-                timestamp = isoFormatter.date(from: dateStr)
-                    ?? ISO8601DateFormatter().date(from: dateStr)
-                    ?? Date()
-            } else {
-                timestamp = Date()
-            }
-
-            // Parse severity
-            let level: CCLogLevel
-            if let severity = json["severity"] as? String {
-                switch severity.lowercased() {
-                case "debug": level = .debug
-                case "info", "informational": level = .info
-                case "warning", "warn": level = .warning
-                case "error", "err", "critical", "alert", "emergency": level = .error
-                default: level = .info
-                }
-            } else {
-                level = .info
-            }
-
-            let entry = CCLogEntry(
-                timestamp: timestamp,
-                message: message,
-                level: level,
-                source: json["service"] as? String,
-                instanceId: json["instanceId"] as? String
-            )
-            entries.append(entry)
-        }
-
-        // Sort newest first
-        entries.sort { $0.timestamp > $1.timestamp }
-        return entries
     }
 }
 

@@ -1,11 +1,11 @@
 # Privacy Policy
 
 **Effective date:** 2026-05-01
-**App:** Clever iOS Client (`com.fredalix.cciosclient`)
+**App:** My Clever Client (`com.fredalix.cciosclient`)
 **Developer:** Frédéric Alix
 **Contact:** frederic.alix@fredalix.com
 
-This privacy policy explains how the **Clever iOS Client** mobile application ("the App") handles your information. The App is an unofficial iOS client for the [Clever Cloud](https://www.clever-cloud.com) Platform-as-a-Service. It lets you manage your Clever Cloud applications, add-ons, organizations, environment variables, deployments, logs, and metrics from your iPhone, iPad, or Mac.
+This privacy policy explains how the **My Clever Client** mobile application ("the App") handles your information. The App is an unofficial iOS client for the [Clever Cloud](https://www.clever-cloud.com) Platform-as-a-Service. It lets you manage your Clever Cloud applications, add-ons, organizations, environment variables, deployments, logs, and metrics from your iPhone, iPad, or Mac.
 
 ## TL;DR
 

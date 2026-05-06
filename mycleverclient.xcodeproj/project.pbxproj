@@ -24,9 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		C6A4F8B72E01751500FAEC72 /* cleveriosclient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cleveriosclient.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C6A4F8C62E01751700FAEC72 /* cleveriosclientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cleveriosclientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		C6A4F8D02E01751700FAEC72 /* cleveriosclientUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cleveriosclientUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6A4F8B72E01751500FAEC72 /* mycleverclient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mycleverclient.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6A4F8C62E01751700FAEC72 /* mycleverclientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mycleverclientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6A4F8D02E01751700FAEC72 /* mycleverclientUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mycleverclientUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6E7BE4C2E7F0AE0005918F9 /* cleveriosclient.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = cleveriosclient.xcodeproj; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -92,9 +92,9 @@
 		C6A4F8B82E01751500FAEC72 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C6A4F8B72E01751500FAEC72 /* cleveriosclient.app */,
-				C6A4F8C62E01751700FAEC72 /* cleveriosclientTests.xctest */,
-				C6A4F8D02E01751700FAEC72 /* cleveriosclientUITests.xctest */,
+				C6A4F8B72E01751500FAEC72 /* mycleverclient.app */,
+				C6A4F8C62E01751700FAEC72 /* mycleverclientTests.xctest */,
+				C6A4F8D02E01751700FAEC72 /* mycleverclientUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,9 +102,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C6A4F8B62E01751500FAEC72 /* cleveriosclient */ = {
+		C6A4F8B62E01751500FAEC72 /* mycleverclient */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C6A4F8DA2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclient" */;
+			buildConfigurationList = C6A4F8DA2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclient" */;
 			buildPhases = (
 				C6A4F8B32E01751500FAEC72 /* Sources */,
 				C6A4F8B42E01751500FAEC72 /* Frameworks */,
@@ -117,16 +117,16 @@
 			fileSystemSynchronizedGroups = (
 				C6A4F8B92E01751500FAEC72 /* cleveriosclient */,
 			);
-			name = cleveriosclient;
+			name = mycleverclient;
 			packageProductDependencies = (
 			);
 			productName = test0;
-			productReference = C6A4F8B72E01751500FAEC72 /* cleveriosclient.app */;
+			productReference = C6A4F8B72E01751500FAEC72 /* mycleverclient.app */;
 			productType = "com.apple.product-type.application";
 		};
-		C6A4F8C52E01751700FAEC72 /* cleveriosclientTests */ = {
+		C6A4F8C52E01751700FAEC72 /* mycleverclientTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C6A4F8DD2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclientTests" */;
+			buildConfigurationList = C6A4F8DD2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclientTests" */;
 			buildPhases = (
 				C6A4F8C22E01751700FAEC72 /* Sources */,
 				C6A4F8C32E01751700FAEC72 /* Frameworks */,
@@ -140,16 +140,16 @@
 			fileSystemSynchronizedGroups = (
 				C6A4F8C92E01751700FAEC72 /* cleveriosclientTests */,
 			);
-			name = cleveriosclientTests;
+			name = mycleverclientTests;
 			packageProductDependencies = (
 			);
 			productName = test0Tests;
-			productReference = C6A4F8C62E01751700FAEC72 /* cleveriosclientTests.xctest */;
+			productReference = C6A4F8C62E01751700FAEC72 /* mycleverclientTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		C6A4F8CF2E01751700FAEC72 /* cleveriosclientUITests */ = {
+		C6A4F8CF2E01751700FAEC72 /* mycleverclientUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C6A4F8E02E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclientUITests" */;
+			buildConfigurationList = C6A4F8E02E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclientUITests" */;
 			buildPhases = (
 				C6A4F8CC2E01751700FAEC72 /* Sources */,
 				C6A4F8CD2E01751700FAEC72 /* Frameworks */,
@@ -163,11 +163,11 @@
 			fileSystemSynchronizedGroups = (
 				C6A4F8D32E01751700FAEC72 /* cleveriosclientUITests */,
 			);
-			name = cleveriosclientUITests;
+			name = mycleverclientUITests;
 			packageProductDependencies = (
 			);
 			productName = test0UITests;
-			productReference = C6A4F8D02E01751700FAEC72 /* cleveriosclientUITests.xctest */;
+			productReference = C6A4F8D02E01751700FAEC72 /* mycleverclientUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -193,7 +193,7 @@
 					};
 				};
 			};
-			buildConfigurationList = C6A4F8B22E01751500FAEC72 /* Build configuration list for PBXProject "cleveriosclient" */;
+			buildConfigurationList = C6A4F8B22E01751500FAEC72 /* Build configuration list for PBXProject "mycleverclient" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -213,9 +213,9 @@
 			);
 			projectRoot = "";
 			targets = (
-				C6A4F8B62E01751500FAEC72 /* cleveriosclient */,
-				C6A4F8C52E01751700FAEC72 /* cleveriosclientTests */,
-				C6A4F8CF2E01751700FAEC72 /* cleveriosclientUITests */,
+				C6A4F8B62E01751500FAEC72 /* mycleverclient */,
+				C6A4F8C52E01751700FAEC72 /* mycleverclientTests */,
+				C6A4F8CF2E01751700FAEC72 /* mycleverclientUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -271,12 +271,12 @@
 /* Begin PBXTargetDependency section */
 		C6A4F8C82E01751700FAEC72 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = C6A4F8B62E01751500FAEC72 /* cleveriosclient */;
+			target = C6A4F8B62E01751500FAEC72 /* mycleverclient */;
 			targetProxy = C6A4F8C72E01751700FAEC72 /* PBXContainerItemProxy */;
 		};
 		C6A4F8D22E01751700FAEC72 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = C6A4F8B62E01751500FAEC72 /* cleveriosclient */;
+			target = C6A4F8B62E01751500FAEC72 /* mycleverclient */;
 			targetProxy = C6A4F8D12E01751700FAEC72 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -408,7 +408,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 2.26;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -446,7 +446,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 2.26;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -491,7 +491,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cleveriosclient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/cleveriosclient";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mycleverclient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mycleverclient";
 			};
 			name = Debug;
 		};
@@ -509,7 +509,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cleveriosclient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/cleveriosclient";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mycleverclient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mycleverclient";
 			};
 			name = Release;
 		};
@@ -548,7 +548,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C6A4F8B22E01751500FAEC72 /* Build configuration list for PBXProject "cleveriosclient" */ = {
+		C6A4F8B22E01751500FAEC72 /* Build configuration list for PBXProject "mycleverclient" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C6A4F8D82E01751700FAEC72 /* Debug */,
@@ -557,7 +557,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C6A4F8DA2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclient" */ = {
+		C6A4F8DA2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclient" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C6A4F8DB2E01751700FAEC72 /* Debug */,
@@ -566,7 +566,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C6A4F8DD2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclientTests" */ = {
+		C6A4F8DD2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclientTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C6A4F8DE2E01751700FAEC72 /* Debug */,
@@ -575,7 +575,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C6A4F8E02E01751700FAEC72 /* Build configuration list for PBXNativeTarget "cleveriosclientUITests" */ = {
+		C6A4F8E02E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclientUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C6A4F8E12E01751700FAEC72 /* Debug */,

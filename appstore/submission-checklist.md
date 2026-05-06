@@ -1,4 +1,4 @@
-# App Store Submission Checklist — Clever iOS Client
+# App Store Submission Checklist — My Clever Client
 
 This is a step-by-step checklist for the **first** App Store submission. Tick each box as you go. Estimated total: **6-8 hours of real work**, spread over 1-2 days.
 
@@ -46,7 +46,7 @@ The two `.astro` pages have already been created in `~/fax/src/fredalix.com/`. T
   ```bash
   cd ~/fax/src/fredalix.com
   git add src/pages/en/cleveriosclient/
-  git commit -m "Add privacy + support pages for Clever iOS Client"
+  git commit -m "Add privacy + support pages for My Clever Client"
   git push
   ```
 - [ ] Deploy on the production server (Docker + Traefik):
@@ -151,11 +151,11 @@ iPad's simulator has its own Keychain — you'll log in again. The 3-column Navi
 
 ## Phase 5 — Fill in App Store Connect
 
-Go to <https://appstoreconnect.apple.com> → **My Apps** → **Clever iOS Client**.
+Go to <https://appstoreconnect.apple.com> → **My Apps** → **My Clever Client**.
 
 ### 5.1 — App Information (one-time, top of left sidebar)
 
-- [ ] **Name**: `Clever iOS Client`
+- [ ] **Name**: `My Clever Client`
 - [ ] **Subtitle**: from your choice in Phase 1
 - [ ] **Privacy Policy URL**: from Phase 2
 - [ ] **Category**: Primary = **Productivity**, Secondary (optional) = **Developer Tools**
@@ -249,7 +249,7 @@ If rejected, the **Resolution Center** in ASC is where you'll get the message an
 ## Phase 7 — Post-approval
 
 - [ ] If you chose **Manually release**, go to ASC → version page → **Release This Version**.
-- [ ] Watch the App Store URL go live (search for "Clever iOS Client" — sometimes takes 1-2 hours to appear in search).
+- [ ] Watch the App Store URL go live (search for "My Clever Client" — sometimes takes 1-2 hours to appear in search).
 - [ ] Verify the listing on a phone: title, screenshots, description, age, category.
 - [ ] Verify in-app: launch from a device that does NOT have the TestFlight build, sign in with a real account, exercise each tab.
 - [ ] Tag the release in git:

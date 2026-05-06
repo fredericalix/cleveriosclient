@@ -723,6 +723,8 @@ public final class CCHTTPClient: ObservableObject {
             return Fail(error: CCError.authenticationFailed).eraseToAnyPublisher()
         }
 
+        debugLog("🌐 [CCHTTPClient] SSE GET \(url.absoluteString)")
+
         return Future<Data, CCError> { promise in
             let collector = SSEDataCollector(promise: promise)
             let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
@@ -756,12 +758,19 @@ private final class SSEDataCollector: NSObject, URLSessionDataDelegate, @uncheck
         self.promise = promise
     }
 
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let http = response as? HTTPURLResponse {
+            debugLog("🌐 [SSE] HTTP \(http.statusCode) for \(http.url?.absoluteString ?? "?")")
+        }
+        completionHandler(.allow)
+    }
+
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         accumulatedData.append(data)
 
         // Check if we received log events followed by a heartbeat
         if let text = String(data: data, encoding: .utf8) {
-            if text.contains("APPLICATION_LOG") {
+            if text.contains("APPLICATION_LOG") || text.contains("RESOURCE_LOG") {
                 hasReceivedLogEvents = true
             }
             // If we already got log events and now see a heartbeat,
@@ -778,10 +787,13 @@ private final class SSEDataCollector: NSObject, URLSessionDataDelegate, @uncheck
         self.session?.invalidateAndCancel()
 
         if !accumulatedData.isEmpty {
+            debugLog("🌐 [SSE] task completed with \(accumulatedData.count) bytes accumulated (error=\(error?.localizedDescription ?? "nil"))")
             promise(.success(accumulatedData))
         } else if let error = error {
+            debugLog("❌ [SSE] task failed: \(error.localizedDescription)")
             promise(.failure(CCError.networkError(error)))
         } else {
+            debugLog("⚠️ [SSE] task completed with 0 bytes and no error")
             promise(.success(Data()))
         }
     }

@@ -1,6 +1,6 @@
-# Support — Clever iOS Client
+# Support — My Clever Client
 
-Thanks for using **Clever iOS Client**, the unofficial iOS app for [Clever Cloud](https://www.clever-cloud.com).
+Thanks for using **My Clever Client**, the unofficial iOS app for [Clever Cloud](https://www.clever-cloud.com).
 
 ## Get help
 
@@ -40,7 +40,7 @@ No. There are no third-party trackers, no analytics SDKs, no ads. The only telem
 
 When emailing or filing an issue, please include:
 
-1. App version (visible at the bottom of the *About* / *Settings* screen, if present, or in iOS Settings → Clever iOS Client → Version)
+1. App version (visible at the bottom of the *About* / *Settings* screen, if present, or in iOS Settings → My Clever Client → Version)
 2. iOS version and device model
 3. What you expected to happen vs. what happened
 4. Steps to reproduce
@@ -52,4 +52,4 @@ See the [Privacy Policy](./privacy-policy.md).
 
 ---
 
-*Clever iOS Client is an unofficial, third-party app. It is not affiliated with, endorsed by, or sponsored by Clever Cloud SAS.*
+*My Clever Client is an unofficial, third-party app. It is not affiliated with, endorsed by, or sponsored by Clever Cloud SAS.*

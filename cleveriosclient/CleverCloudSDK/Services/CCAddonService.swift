@@ -397,88 +397,73 @@ public class CCAddonService: ObservableObject {
     
     // MARK: - Add-on Logs
     
-    /// Get logs for an add-on
+    /// Get logs for an add-on (v4 SSE).
+    ///
+    /// Migrates off the deprecated `/v2/logs/{addonId}` endpoint (sunset 2026-05-23). The v4 logs API
+    /// uses a dedicated `resources` route — distinct from the `applications` route — keyed on the
+    /// add-on's `realId` (e.g. `postgresql_xxx`, `redis_xxx`, …) and the owner ID. Mirrors what
+    /// clever-tools does via `ResourceLogStream`. External SaaS add-ons (Mailpace, Mailtrap, etc.)
+    /// have a `nil` realId and surface as a 404.
+    ///
     /// - Parameters:
-    ///   - addonId: The add-on ID
-    ///   - organizationId: Optional organization ID (nil for user add-ons)
-    ///   - limit: Maximum number of logs to retrieve (default: 100)
-    ///   - order: Log order (asc or desc, default: desc)
-    /// - Returns: Publisher with array of log entries
+    ///   - addon: The add-on. Its `realId` is used as the resource ID.
+    ///   - ownerId: Owner ID for the add-on. For personal add-ons this is the `user_xxx` id; for
+    ///              org add-ons the `orga_xxx` id. Required — v4 has no `/self/` form for resources.
+    ///   - limit: Maximum number of logs to retrieve (default: 100).
+    ///   - since: Earliest log timestamp; defaults to 24h ago.
+    /// - Returns: Publisher with array of log entries (newest-first).
     public func getAddonLogs(
-        addonId: String,
-        organizationId: String? = nil,
+        addon: CCAddon,
+        ownerId: String?,
         limit: Int = 100,
-        order: String = "desc"
+        since: Date? = nil
     ) -> AnyPublisher<[CCLogEntry], CCError> {
-        // Clever Cloud CLI uses /v2/logs/{addonId} directly, treating addon as an app
-        let endpoint = "/logs/\(addonId)?limit=\(limit)&order=\(order)"
-        
-        debugLog("🔍 [CCAddonService] Getting logs from endpoint: \(endpoint)")
-        debugLog("🔍 [CCAddonService] Addon ID: \(addonId)")
-        debugLog("📝 [CCAddonService] Using v2 logs endpoint like clever-tools CLI")
-        
-        // Decode as array of ElasticsearchLogEntry first
-        return httpClient.get(endpoint, apiVersion: .v2)
+        debugLog("🔍 [CCAddonService] getAddonLogs called for addon.id=\(addon.id) name=\(addon.name) provider=\(addon.provider.id) realId=\(addon.realId ?? "nil") owner=\(ownerId ?? "nil")")
+
+        guard let realId = addon.realId, !realId.isEmpty else {
+            debugLog("⚠️ [CCAddonService] Add-on \(addon.id) has no realId; returning 404 (logs unavailable)")
+            return Fail(error: CCError.httpError(
+                statusCode: 404,
+                message: "Logs not available for this add-on type"
+            )).eraseToAnyPublisher()
+        }
+
+        guard let ownerId = ownerId, !ownerId.isEmpty else {
+            debugLog("⚠️ [CCAddonService] Missing ownerId for addon \(addon.id); v4 resources route requires it")
+            return Fail(error: CCError.httpError(
+                statusCode: 404,
+                message: "Logs not available (missing owner context)"
+            )).eraseToAnyPublisher()
+        }
+
+        let sinceDate = since ?? Date().addingTimeInterval(-24 * 3600)
+        let sinceStr = ISO8601DateFormatter().string(from: sinceDate)
+
+        let endpoint = "/logs/organisations/\(ownerId)/resources/\(realId)/logs?limit=\(limit)&since=\(sinceStr)"
+
+        debugLog("🔍 [CCAddonService] SSE endpoint: \(endpoint)")
+
+        return httpClient.getSSEData(endpoint, apiVersion: .v4, timeout: 10.0)
             .handleEvents(
-                receiveOutput: { (entries: [ElasticsearchLogEntry]) in
-                    debugLog("📝 [CCAddonService] Received \(entries.count) Elasticsearch log entries")
+                receiveOutput: { data in
+                    debugLog("📦 [CCAddonService] SSE response received: \(data.count) bytes")
+                    if let preview = String(data: data.prefix(800), encoding: .utf8), !preview.isEmpty {
+                        debugLog("📄 [CCAddonService] SSE preview (first 800 bytes):\n\(preview)")
+                    } else {
+                        debugLog("📄 [CCAddonService] SSE response is empty or non-UTF8")
+                    }
                 },
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion {
-                        debugLog("❌ [CCAddonService] Failed to decode Elasticsearch logs: \(error)")
+                        debugLog("❌ [CCAddonService] SSE failure: \(error)")
                     }
                 }
             )
-            .map { (elasticLogs: [ElasticsearchLogEntry]) -> [CCLogEntry] in
-                // Convert Elasticsearch format to our CCLogEntry format
-                let logs = elasticLogs.compactMap { elastic -> CCLogEntry? in
-                    // Parse timestamp
-                    let timestamp: Date
-                    if let date = ISO8601DateFormatter().date(from: elastic.source.timestamp) {
-                        timestamp = date
-                    } else {
-                        timestamp = Date()
-                    }
-                    
-                    // Determine log level from syslog severity or message content
-                    let level: CCLogLevel
-                    if let severity = elastic.source.syslogSeverity {
-                        switch severity.lowercased() {
-                        case "error", "critical":
-                            level = .error
-                        case "warning", "warn":
-                            level = .warning
-                        case "debug":
-                            level = .debug
-                        default:
-                            level = .info
-                        }
-                    } else {
-                        // Infer from message content
-                        let lowercasedMessage = elastic.source.message.lowercased()
-                        if lowercasedMessage.contains("error") || lowercasedMessage.contains("fail") ||
-                           lowercasedMessage.contains("attack") || lowercasedMessage.contains("aborted") {
-                            level = .error
-                        } else if lowercasedMessage.contains("warn") {
-                            level = .warning
-                        } else if lowercasedMessage.contains("debug") {
-                            level = .debug
-                        } else {
-                            level = .info
-                        }
-                    }
-                    
-                    return CCLogEntry(
-                        timestamp: timestamp,
-                        message: elastic.source.message,
-                        level: level,
-                        source: elastic.source.syslogProgram,
-                        instanceId: elastic.source.host
-                    )
-                }
-                
-                debugLog("✅ [CCAddonService] Converted \(logs.count) log entries from Elasticsearch format")
-                return logs
+            .map { data -> [CCLogEntry] in
+                let sseText = String(data: data, encoding: .utf8) ?? ""
+                let entries = CCLogEntry.parseSSEStream(sseText)
+                debugLog("✅ [CCAddonService] Parsed \(entries.count) log entries from SSE stream (input \(sseText.count) chars)")
+                return entries
             }
             .eraseToAnyPublisher()
     }

@@ -1066,10 +1066,9 @@ struct AddonDetailView: View {
         logsError = nil
         
         cleverCloudSDK.addons.getAddonLogs(
-            addonId: addon.id,
-            organizationId: organizationId,
-            limit: initialLogsLimit,
-            order: "desc"
+            addon: addon,
+            ownerId: organizationId,
+            limit: initialLogsLimit
         )
         .receive(on: DispatchQueue.main)
         .sink(

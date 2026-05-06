@@ -1,4 +1,4 @@
-# App Store Metadata — Clever iOS Client
+# App Store Metadata — My Clever Client
 
 Copy/paste this directly into App Store Connect. Character limits in headings are Apple's hard limits — App Store Connect will reject longer strings.
 
@@ -9,9 +9,9 @@ Copy/paste this directly into App Store Connect. Character limits in headings ar
 ## App name (max 30 chars)
 
 ```
-Clever iOS Client
+My Clever Client
 ```
-*(17 chars — already configured in Xcode)*
+*(16 chars — already configured in Xcode)*
 
 ## Subtitle (max 30 chars)
 
@@ -43,7 +43,7 @@ Manage your Clever Cloud applications, add-ons, deployments, logs, and metrics f
 ## Description (max 4000 chars)
 
 ```
-Clever iOS Client is an unofficial mobile dashboard for Clever Cloud, the European Platform-as-a-Service. Bring your apps with you — check status, restart, redeploy, scale, and tail logs from your iPhone, iPad, or Mac.
+My Clever Client is an unofficial mobile dashboard for Clever Cloud, the European Platform-as-a-Service. Bring your apps with you — check status, restart, redeploy, scale, and tail logs from your iPhone, iPad, or Mac.
 
 WHAT YOU CAN DO
 
@@ -97,7 +97,7 @@ clevercloud,paas,devops,deploy,logs,metrics,addon,cloud,hosting,sre,sysadmin,ser
 ```
 *(94 chars)*
 
-> **Tip:** don't include words already in the app name/subtitle ("clever", "cloud" are fine here because the title is "Clever iOS Client"). Avoid plurals if singular is searched more.
+> **Tip:** don't include words already in the app name/subtitle ("clever", "cloud" are fine here because the title is "My Clever Client"). Avoid plurals if singular is searched more.
 
 ## What's New in this Version (max 4000 chars — for v1.0)
 
@@ -117,21 +117,24 @@ First public release.
 
 ## Marketing URL (optional)
 
-If you publish a landing page (e.g., `https://github.com/fredericalix/cleveriosclient`), put it here. Otherwise leave blank.
+```
+https://www.fredalix.com/en/mycleverclient
+```
+*(Astro page at `fredalix.com/src/pages/en/mycleverclient/index.astro`)*
 
 ## Support URL (required)
 
 ```
-https://www.fredalix.com/en/cleveriosclient/support
+https://www.fredalix.com/en/mycleverclient/support
 ```
-*(Astro page at `fredalix.com/src/pages/en/cleveriosclient/support.astro` — deploy via `docker compose build && docker compose up -d`)*
+*(Astro page at `fredalix.com/src/pages/en/mycleverclient/support.astro`)*
 
 ## Privacy Policy URL (required)
 
 ```
-https://www.fredalix.com/en/cleveriosclient/privacy
+https://www.fredalix.com/en/mycleverclient/privacy
 ```
-*(Astro page at `fredalix.com/src/pages/en/cleveriosclient/privacy.astro` — deploy via `docker compose build && docker compose up -d`)*
+*(Astro page at `fredalix.com/src/pages/en/mycleverclient/privacy.astro`)*
 
 ## Copyright
 
@@ -165,7 +168,7 @@ Then in **App Store Connect → App Review Information → Sign-In required → 
 In the **Notes** field:
 
 ```
-Clever iOS Client is an unofficial mobile client for Clever Cloud (https://www.clever-cloud.com), a European PaaS. Sign-in uses Clever Cloud's official OAuth 1.0a flow.
+My Clever Client is an unofficial mobile client for Clever Cloud (https://www.clever-cloud.com), a European PaaS. Sign-in uses Clever Cloud's official OAuth 1.0a flow.
 
 To test:
 1. Tap "Sign in with Clever Cloud" on the launch screen.
@@ -174,8 +177,8 @@ To test:
 
 The demo account has a sample Node.js application and a sample Postgres add-on so you can exercise every tab (Environment, Configuration, Metrics, Deployments, Logs, Domains, Advanced).
 
-Privacy policy: https://www.fredalix.com/en/cleveriosclient/privacy
-Support: https://www.fredalix.com/en/cleveriosclient/support
+Privacy policy: https://www.fredalix.com/en/mycleverclient/privacy
+Support: https://www.fredalix.com/en/mycleverclient/support
 ```
 
 ## Screenshots required
