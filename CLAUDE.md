@@ -10,19 +10,19 @@ Native iOS application for managing Clever Cloud infrastructure (applications, a
 
 ```bash
 # Build from command line
-xcodebuild -project cleveriosclient.xcodeproj -scheme cleveriosclient build
+xcodebuild -project mycleverclient.xcodeproj -scheme cleveriosclient build
 
 # Run unit tests
 xcodebuild test -scheme cleveriosclient
 
-# Run UI tests
-xcodebuild test -scheme cleveriosclientUITests
+# Run UI tests (UI test target is `mycleverclientUITests`)
+xcodebuild test -project mycleverclient.xcodeproj -scheme cleveriosclient -only-testing:mycleverclientUITests
 
 # Clean build cache (required when JSON decoding errors appear after model changes)
-xcodebuild clean -project cleveriosclient.xcodeproj && rm -rf DerivedData/
+xcodebuild clean -project mycleverclient.xcodeproj && rm -rf DerivedData/
 
 # Open in Xcode
-open cleveriosclient.xcodeproj
+open mycleverclient.xcodeproj
 ```
 
 ## Architecture

@@ -131,10 +131,10 @@ iPad's simulator has its own Keychain — you'll log in again. The 3-column Navi
 
 - [ ] Pull the latest, clean build:
   ```bash
-  xcodebuild clean -project cleveriosclient.xcodeproj
+  xcodebuild clean -project mycleverclient.xcodeproj
   rm -rf DerivedData/
   ```
-- [ ] (If you decided to bump version in Phase 1) Update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in Xcode → Project → cleveriosclient target → Build Settings.
+- [ ] (If you decided to bump version in Phase 1) Update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in Xcode → Project → mycleverclient target → Build Settings.
 - [ ] In Xcode: **Product → Destination → Any iOS Device (arm64)**.
 - [ ] **Product → Archive**. Wait for the archive to appear in **Organizer**.
 - [ ] In Organizer: select the archive → **Distribute App** → **App Store Connect** → **Upload**.

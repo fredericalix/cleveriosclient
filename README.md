@@ -57,7 +57,7 @@ A native iOS application for managing Clever Cloud applications and add-ons with
 
 Open the project in Xcode:
 ```bash
-open cleveriosclient.xcodeproj
+open mycleverclient.xcodeproj
 ```
 
 Build and run:
@@ -141,11 +141,11 @@ Debug logs are written to:
 If you encounter JSON decoding errors after modifying models:
 ```bash
 # Clean build cache
-xcodebuild clean -project cleveriosclient.xcodeproj
+xcodebuild clean -project mycleverclient.xcodeproj
 rm -rf DerivedData/
 
 # Rebuild
-xcodebuild -project cleveriosclient.xcodeproj -scheme cleveriosclient build
+xcodebuild -project mycleverclient.xcodeproj -scheme cleveriosclient build
 ```
 
 ## 📊 API Coverage
