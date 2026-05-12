@@ -43,9 +43,24 @@ final class AppState {
     // MARK: - Private
 
     private var cancellables = Set<AnyCancellable>()
+    /// Long-lived subscriptions to the events service streams. Cleared only by stopPolling().
     private var eventsCancellables = Set<AnyCancellable>()
+    /// Per-app status fetch subscriptions. Cleared by cancelInFlight() on org switch.
+    private var statusRequestCancellables = Set<AnyCancellable>()
     private var pollingTimer: Timer?
     private var dataRefreshTimer: Timer?
+
+    // Debounce: skip the auto tick when a manual refresh fired within this window.
+    private let minRefreshInterval: TimeInterval = 3.0
+    private var lastDataRefreshAt: Date = .distantPast
+    private var lastStatusRefreshAt: Date = .distantPast
+
+    #if DEBUG
+    // In-memory counter for observability — measures how many per-app status fetches we issue.
+    // Dumped on stopPolling so the before/after impact of the SSE migration is visible.
+    private var statusRequestsIssued: Int = 0
+    private var counterWindowStartedAt: Date = Date()
+    #endif
 
     // Closures provided by ContentView so the polling loop can read the current app list and
     // trigger list refreshes without AppState taking ownership of all data state.
@@ -167,6 +182,10 @@ final class AppState {
         }
 
         debugLog("🔄 Setting up intelligent polling system...")
+        #if DEBUG
+        counterWindowStartedAt = Date()
+        statusRequestsIssued = 0
+        #endif
 
         cleverCloudSDK.events.connectionStatePublisher
             .receive(on: DispatchQueue.main)
@@ -193,13 +212,19 @@ final class AppState {
 
         pollingTimer = Timer.scheduledTimer(withTimeInterval: pollingInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.refreshApplicationStatuses()
+                self?.refreshApplicationStatuses(forced: false)
             }
         }
 
         dataRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.dataRefreshTick?()
+                guard let self else { return }
+                if Date().timeIntervalSince(self.lastDataRefreshAt) < self.minRefreshInterval {
+                    debugLog("ℹ️ ⏭️ Skipping data refresh tick (debounced, manual refresh <\(Int(self.minRefreshInterval))s ago)")
+                    return
+                }
+                self.lastDataRefreshAt = Date()
+                self.dataRefreshTick?()
             }
         }
     }
@@ -209,9 +234,16 @@ final class AppState {
         guard pollingTimer != nil || dataRefreshTimer != nil else {
             return
         }
+        #if DEBUG
+        let windowSeconds = Date().timeIntervalSince(counterWindowStartedAt)
+        debugLog("ℹ️ 📊 Status requests since polling start: \(statusRequestsIssued) over \(Int(windowSeconds))s")
+        statusRequestsIssued = 0
+        counterWindowStartedAt = Date()
+        #endif
         debugLog("🛑 Stopping polling system...")
         cleverCloudSDK.events.disconnect()
         eventsCancellables.removeAll()
+        statusRequestCancellables.removeAll()
         pollingTimer?.invalidate()
         pollingTimer = nil
         dataRefreshTimer?.invalidate()
@@ -221,10 +253,33 @@ final class AppState {
         eventSystemMode = "Disconnected"
     }
 
+    /// Cancel all in-flight per-app status fetches. The long-lived events-service subscriptions are
+    /// kept intact. Used by the org-switch path so responses from the previous org cannot land in
+    /// `applicationStatuses` after the user has moved on.
+    func cancelInFlight() {
+        guard !statusRequestCancellables.isEmpty else { return }
+        debugLog("ℹ️ 🧹 Cancelling \(statusRequestCancellables.count) in-flight status requests")
+        statusRequestCancellables.removeAll()
+        applicationStatuses.removeAll()
+    }
+
+    /// Stamp `lastDataRefreshAt` so the next auto tick is debounced. ContentView calls this from
+    /// the manual refresh paths (pull-to-refresh, Cmd+R, org switch) so the 10s timer doesn't pile
+    /// a second request on top of the one we just issued.
+    func markDataRefreshed() {
+        lastDataRefreshAt = Date()
+    }
+
     /// Trigger an immediate status refresh. Used after an explicit data reload (e.g. org change).
-    func refreshApplicationStatuses() {
+    /// Call with `forced: false` from the polling timer so a recent manual refresh debounces it.
+    func refreshApplicationStatuses(forced: Bool = true) {
+        if !forced, Date().timeIntervalSince(lastStatusRefreshAt) < minRefreshInterval {
+            debugLog("ℹ️ ⏭️ Skipping status refresh (debounced, manual <\(Int(minRefreshInterval))s ago)")
+            return
+        }
         let apps = applicationsProvider?() ?? applications
         guard !apps.isEmpty else { return }
+        lastStatusRefreshAt = Date()
         debugLog("🔄 Refreshing application statuses...")
         loadApplicationStatuses(for: apps)
     }
@@ -234,13 +289,19 @@ final class AppState {
             applicationStatuses[app.id] = "Loading..."
         }
 
-        let currentOrgId = organizationIdProvider?() ?? selectedOrganization?.id
+        // Capture the org context this batch was issued under. Any response that lands after the
+        // user has switched orgs is dropped on the floor — see the orgId guard in the sink below.
+        let requestOrgId = organizationIdProvider?() ?? selectedOrganization?.id
         let sdk = cleverCloudSDK
+
+        #if DEBUG
+        statusRequestsIssued += apps.count
+        #endif
 
         for (index, app) in apps.enumerated() {
             let appId = app.id
             let instancesPublisher: AnyPublisher<[CCApplicationInstance], CCError>
-            if let orgId = currentOrgId, orgId.hasPrefix("orga_") {
+            if let orgId = requestOrgId, orgId.hasPrefix("orga_") {
                 instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId, organizationId: orgId)
             } else {
                 instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId)
@@ -249,19 +310,26 @@ final class AppState {
             let delay = Double(index) * 0.2
             instancesPublisher
                 .delay(for: .milliseconds(Int(delay * 1000)), scheduler: DispatchQueue.main)
+                .retry(1)
                 .timeout(.seconds(10), scheduler: DispatchQueue.main)
                 .receive(on: DispatchQueue.main)
                 .sink(
                     receiveCompletion: { [weak self] completion in
+                        guard let self else { return }
+                        let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
+                        guard liveOrgId == requestOrgId else { return }
                         if case .failure = completion {
-                            self?.applicationStatuses[appId] = "Error"
+                            self.applicationStatuses[appId] = "Error"
                         }
                     },
                     receiveValue: { [weak self] instances in
-                        self?.applicationStatuses[appId] = Self.computeApplicationStatus(from: instances)
+                        guard let self else { return }
+                        let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
+                        guard liveOrgId == requestOrgId else { return }
+                        self.applicationStatuses[appId] = Self.computeApplicationStatus(from: instances)
                     }
                 )
-                .store(in: &eventsCancellables)
+                .store(in: &statusRequestCancellables)
         }
     }
 
@@ -281,6 +349,30 @@ final class AppState {
 
     private func handlePlatformEvent(_ event: CCPlatformEvent) {
         lastEventReceived = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+
+        // DEPLOYMENT_ACTION_BEGIN/_END carry an application id in data.id (or data.appId on some
+        // event variants). Map the deployment `state` directly into our display string so the badge
+        // updates in real time without waiting for the next /instances poll.
+        guard event.type == "DEPLOYMENT_ACTION_BEGIN" || event.type == "DEPLOYMENT_ACTION_END" else {
+            return
+        }
+        let appId = (event.data["id"] as? String) ?? (event.data["appId"] as? String)
+        guard let appId, !appId.isEmpty else { return }
+
+        let state = (event.data["state"] as? String)?.uppercased() ?? ""
+        let mapped: String
+        switch state {
+        case "WIP": mapped = "Deploying"
+        case "OK": mapped = "Running"
+        case "FAIL": mapped = "Failed"
+        case "CANCELLED": mapped = "Stopped"
+        default:
+            // Unknown state → trigger a real refresh for that app instead of trusting the event.
+            refreshApplicationStatuses(forced: true)
+            return
+        }
+        debugLog("ℹ️ 📨 Event \(event.type) \(state) → \(appId) = \(mapped)")
+        applicationStatuses[appId] = mapped
     }
 
     /// Compute application status from instances (follows clever-tools computeStatus pattern)

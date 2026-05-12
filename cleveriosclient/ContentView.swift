@@ -230,6 +230,9 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
+            // Re-arm polling first — it's idempotent and a no-op when timers are already alive,
+            // but is needed after scenePhase brings us back from background where stopPolling fired.
+            startAppStatePolling()
             if let org = selectedOrganization {
                 autoRefreshOrganizationData(for: org)
             } else {
@@ -315,6 +318,9 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
+            // Re-arm polling first — it's idempotent and a no-op when timers are already alive,
+            // but is needed after scenePhase brings us back from background where stopPolling fired.
+            startAppStatePolling()
             if let org = selectedOrganization {
                 autoRefreshOrganizationData(for: org)
             } else {
@@ -1854,16 +1860,23 @@ struct ContentView: View {
         // Clear error states
         errorMessage = nil
         addonError = nil
-        
+
+        // Cancel any in-flight status requests from the previous org and drop the
+        // ContentView SDK subscriptions so old responses cannot race the new ones.
+        appState?.cancelInFlight()
+        cancellables.removeAll()
+        // Stamp now so the next auto-tick (10s) does not pile a duplicate refresh on top.
+        appState?.markDataRefreshed()
+
         // Set loading state with organization context
         isLoading = true
         errorMessage = "🔄 Switching to \(organization.name)..."
-        
+
         // Store current selection for iPad to maintain after reload
         let currentAppSelection = selectedApplicationForDetail
         let currentAddonSelection = selectedAddonForDetail
         let currentDetailView = selectedDetailView
-        
+
         // Small delay for better UX (visual feedback)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // Auto-load applications for the new organization, then statuses once apps are in

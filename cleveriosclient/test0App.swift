@@ -55,6 +55,7 @@ extension Notification.Name {
 struct AppRootView: View {
     @State private var coordinator = AppCoordinator()
     @State private var appState: AppState?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -70,6 +71,34 @@ struct AppRootView: View {
         .onAppear {
             if appState == nil {
                 appState = AppState(cleverCloudSDK: coordinator.cleverCloudSDK)
+            }
+        }
+        .onChange(of: coordinator.isAuthenticated) { _, isAuth in
+            // On logout, stop polling immediately rather than waiting for ContentView.onDisappear
+            // — the view-tree teardown can be slightly deferred and we don't want a stray tick to
+            // fire against a torn-down SDK.
+            if !isAuth {
+                debugLog("ℹ️ 🛑 Auth dropped → stopping polling")
+                appState?.stopPolling()
+            }
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            guard let appState else { return }
+            switch newPhase {
+            case .background, .inactive:
+                if oldPhase == .active {
+                    debugLog("ℹ️ 🛑 Scene → \(newPhase) — stopping polling")
+                    appState.stopPolling()
+                }
+            case .active:
+                if oldPhase != .active && coordinator.isAuthenticated {
+                    debugLog("ℹ️ 🔄 Scene → active — requesting foreground refresh")
+                    // Ask ContentView to re-arm polling + immediate refresh. ContentView owns the
+                    // org-aware refresh path, so route through the existing notification channel.
+                    NotificationCenter.default.post(name: .appRefreshRequested, object: nil)
+                }
+            @unknown default:
+                break
             }
         }
     }
