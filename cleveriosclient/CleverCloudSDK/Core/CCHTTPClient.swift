@@ -740,6 +740,49 @@ public final class CCHTTPClient: ObservableObject {
         .receive(on: DispatchQueue.main)
         .eraseToAnyPublisher()
     }
+
+    /// Open a persistent SSE connection and push each parsed event as it arrives.
+    ///
+    /// Unlike `getSSEData`, this does not accumulate or close after a heartbeat — the data task
+    /// stays alive until the subscriber cancels the returned publisher or the server closes the
+    /// connection. Each event is delivered as a `CCSSEEvent` on the main queue.
+    public func streamSSE(
+        _ endpoint: String,
+        apiVersion: APIVersion = .v4
+    ) -> AnyPublisher<CCSSEEvent, CCError> {
+        guard let url = buildURL(endpoint: endpoint, apiVersion: apiVersion) else {
+            return Fail(error: CCError.invalidURL).eraseToAnyPublisher()
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = TimeInterval.infinity
+
+        do {
+            request = try oauthSigner.signRequest(request)
+        } catch {
+            return Fail(error: CCError.authenticationFailed).eraseToAnyPublisher()
+        }
+
+        debugLog("🌐 [CCHTTPClient] SSE stream GET \(url.absoluteString)")
+
+        let subject = PassthroughSubject<CCSSEEvent, CCError>()
+        let collector = SSEStreamCollector(subject: subject)
+        let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
+        let task = session.dataTask(with: request)
+        collector.session = session
+        collector.task = task
+        task.resume()
+
+        return subject
+            .handleEvents(receiveCancel: {
+                debugLog("🧹 [CCHTTPClient] SSE stream cancelled by subscriber")
+                collector.cancel()
+            })
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
 }
 
 // MARK: - SSE Data Collector
@@ -804,6 +847,121 @@ private final class SSEDataCollector: NSObject, URLSessionDataDelegate, @uncheck
         task.cancel()
         self.session?.invalidateAndCancel()
         promise(.success(accumulatedData))
+    }
+}
+
+// MARK: - SSE Stream Collector
+
+/// A single SSE event, parsed from a `data:` / `event:` / `id:` block.
+public struct CCSSEEvent: Sendable {
+    public let name: String   // Value of the `event:` line, or "message" by default
+    public let data: String   // Concatenated `data:` lines (sans trailing newline)
+    public let id: String?    // Optional `id:` line value
+}
+
+/// Delegate that parses an SSE stream chunk-by-chunk and pushes each complete event to a Combine
+/// subject. Unlike `SSEDataCollector`, it does not accumulate the full body and does not close
+/// after a heartbeat — the connection stays open until cancelled or the server hangs up.
+private final class SSEStreamCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let subject: PassthroughSubject<CCSSEEvent, CCError>
+    private var buffer = ""
+    private let lock = NSLock()
+    private var finished = false
+    var session: URLSession?
+    var task: URLSessionTask?
+
+    init(subject: PassthroughSubject<CCSSEEvent, CCError>) {
+        self.subject = subject
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let http = response as? HTTPURLResponse {
+            debugLog("🌐 [SSE-stream] HTTP \(http.statusCode) for \(http.url?.absoluteString ?? "?")")
+            if http.statusCode >= 400 {
+                completeWithError(CCError.httpError(statusCode: http.statusCode, message: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)))
+                completionHandler(.cancel)
+                return
+            }
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let chunk = String(data: data, encoding: .utf8) else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard !finished else { return }
+        buffer += chunk
+        // Each SSE event is terminated by a blank line (\n\n). Pull every complete event off the
+        // front of the buffer and emit it; keep the partial trailing fragment for the next chunk.
+        while let separator = buffer.range(of: "\n\n") {
+            let rawEvent = String(buffer[..<separator.lowerBound])
+            buffer.removeSubrange(buffer.startIndex..<separator.upperBound)
+            if let event = Self.parseEvent(rawEvent) {
+                subject.send(event)
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !finished else { return }
+        finished = true
+        self.session?.invalidateAndCancel()
+        if let nsErr = error as NSError?, nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorCancelled {
+            debugLog("ℹ️ [SSE-stream] task cancelled")
+            subject.send(completion: .finished)
+            return
+        }
+        if let error {
+            debugLog("❌ [SSE-stream] task failed: \(error.localizedDescription)")
+            subject.send(completion: .failure(.networkError(error)))
+        } else {
+            debugLog("ℹ️ [SSE-stream] task completed normally (server closed)")
+            subject.send(completion: .finished)
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        let alreadyFinished = finished
+        finished = true
+        lock.unlock()
+        guard !alreadyFinished else { return }
+        task?.cancel()
+        session?.invalidateAndCancel()
+    }
+
+    private func completeWithError(_ error: CCError) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        lock.unlock()
+        session?.invalidateAndCancel()
+        subject.send(completion: .failure(error))
+    }
+
+    /// Parse a raw SSE event block (lines separated by `\n`) into a `CCSSEEvent`.
+    private static func parseEvent(_ raw: String) -> CCSSEEvent? {
+        var name = "message"
+        var dataParts: [String] = []
+        var id: String?
+        for line in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.isEmpty || line.hasPrefix(":") { continue } // comments and blanks
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let field = String(line[..<colon])
+            var value = String(line[line.index(after: colon)...])
+            if value.hasPrefix(" ") { value.removeFirst() }
+            switch field {
+            case "event": name = value
+            case "data": dataParts.append(value)
+            case "id": id = value
+            default: break
+            }
+        }
+        guard !dataParts.isEmpty else { return nil }
+        return CCSSEEvent(name: name, data: dataParts.joined(separator: "\n"), id: id)
     }
 }
 

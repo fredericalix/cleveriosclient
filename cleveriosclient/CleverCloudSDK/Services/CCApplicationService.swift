@@ -537,6 +537,35 @@ public class CCApplicationService: ObservableObject {
             }
             .eraseToAnyPublisher()
     }
+
+    /// Open a persistent SSE stream of application logs. The connection stays alive until the
+    /// subscriber cancels — the server first emits a short replay of recent history, then live
+    /// entries as they are produced. Each `CCLogEntry` is delivered on the main queue.
+    /// - Parameters:
+    ///   - applicationId: The application ID
+    ///   - organizationId: Optional organization ID (nil for user applications)
+    public func streamApplicationLogs(
+        applicationId: String,
+        organizationId: String? = nil
+    ) -> AnyPublisher<CCLogEntry, CCError> {
+        // Ask the server for a 15-minute replay window so the user sees recent activity on open,
+        // then keeps receiving live events. Without `since`, the server emits nothing historical
+        // and the view stays blank until a brand-new log line is produced.
+        let sinceStr = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-15 * 60))
+        let base: String
+        if let orgId = organizationId {
+            base = "/logs/organisations/\(orgId)/applications/\(applicationId)/logs"
+        } else {
+            base = "/logs/self/applications/\(applicationId)/logs"
+        }
+        let endpoint = "\(base)?since=\(sinceStr)"
+        return httpClient.streamSSE(endpoint, apiVersion: .v4)
+            .compactMap { event -> CCLogEntry? in
+                guard event.name == "APPLICATION_LOG" else { return nil }
+                return CCLogEntry.parseSSEEventData(event.data)
+            }
+            .eraseToAnyPublisher()
+    }
 }
 
 // MARK: - Supporting Models

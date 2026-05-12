@@ -14,14 +14,15 @@ struct ApplicationLogsView: View {
     @Binding var selectedLogLevel: CCLogLevel?
     @Binding var isPaused: Bool
     @Binding var autoScroll: Bool
-    @Binding var logsTimer: Timer?
+    @Binding var logsTimer: Timer?  // legacy parameter, no longer used (replaced by `logStream`)
 
     @Environment(\.dismiss) private var dismiss
-    @State private var cancellables = Set<AnyCancellable>()
     @State private var scrollViewProxy: ScrollViewProxy?
+    /// Persistent SSE subscription. Cancelled on disappear / pause.
+    @State private var logStream: AnyCancellable?
+    /// Wire-id dedup set — keeps entries unique across reconnects.
+    @State private var knownIds: Set<String> = []
 
-    /// Number of entries fetched on the very first load (recent logs only).
-    private let initialLogsLimit = 50
     /// Hard cap on the rolling buffer; live-tail keeps appending up to this size, oldest drop off.
     private let maxLogsBufferSize = 250
 
@@ -72,7 +73,7 @@ struct ApplicationLogsView: View {
                         .multilineTextAlignment(.center)
                     
                     Button("Retry") {
-                        loadLogs()
+                        startStream()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -128,10 +129,10 @@ struct ApplicationLogsView: View {
             statusBar
         }
         .onAppear {
-            startLogStreaming()
+            startStream()
         }
         .onDisappear {
-            stopLogStreaming()
+            stopStream()
         }
     }
     
@@ -271,87 +272,67 @@ struct ApplicationLogsView: View {
         .background(Color(.systemGray6))
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Stream lifecycle
 
-    private func loadLogs() {
+    /// Open the persistent SSE stream. Replaces the old "timer + getApplicationLogs" pattern; the
+    /// server pushes a short replay of recent history on connect, then live entries thereafter.
+    private func startStream() {
+        guard logStream == nil else { return }
         isLoadingLogs = logs.isEmpty
         logsError = nil
 
-        // On refresh, fetch only logs newer than the latest we have
-        let sinceDate: Date? = logs.max(by: { $0.timestamp < $1.timestamp })?.timestamp
-
-        cleverCloudSDK.applications.getApplicationLogs(
+        logStream = cleverCloudSDK.applications.streamApplicationLogs(
             applicationId: application.id,
-            organizationId: organizationId,
-            limit: initialLogsLimit,
-            since: sinceDate
+            organizationId: organizationId
         )
-        .receive(on: DispatchQueue.main)
         .sink(
             receiveCompletion: { completion in
                 isLoadingLogs = false
+                logStream = nil
                 if case .failure(let error) = completion {
                     logsError = error.localizedDescription
-                    debugLog("❌ Failed to load application logs: \(error)")
+                    debugLog("❌ Application logs stream failed: \(error)")
+                } else {
+                    debugLog("ℹ️ Application logs stream closed by server")
                 }
             },
-            receiveValue: { newLogs in
-                if sinceDate == nil {
-                    // Initial load - replace all
-                    logs = newLogs
-                } else {
-                    // Refresh - append only truly new logs (by timestamp)
-                    let existingTimestamps = Set(logs.map { $0.timestamp })
-                    let uniqueNew = newLogs.filter { !existingTimestamps.contains($0.timestamp) }
-                    if !uniqueNew.isEmpty {
-                        logs.append(contentsOf: uniqueNew)
-                        // Keep only the last `maxLogsBufferSize` entries (live-tail rolling cap)
-                        if logs.count > maxLogsBufferSize {
-                            let sorted = logs.sorted { $0.timestamp < $1.timestamp }
-                            logs = Array(sorted.suffix(maxLogsBufferSize))
-                        }
-                    }
-                }
-                let newCount = sinceDate == nil ? newLogs.count : newLogs.filter { !Set(logs.map { $0.timestamp }).contains($0.timestamp) == false }.count
-                debugLog("✅ Loaded \(newLogs.count) application logs (\(logs.count) total)")
+            receiveValue: { entry in
+                isLoadingLogs = false
+                append(entry)
             }
         )
-        .store(in: &cancellables)
     }
-    
-    private func startLogStreaming() {
-        // Initial load
-        loadLogs()
-        
-        // Start periodic updates if not paused
-        if !isPaused {
-            logsTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                Task { @MainActor in
-                    if !isPaused {
-                        loadLogs()
-                    }
-                }
+
+    private func stopStream() {
+        logStream?.cancel()
+        logStream = nil
+    }
+
+    private func append(_ entry: CCLogEntry) {
+        guard !isPaused else { return }
+        guard knownIds.insert(entry.id).inserted else { return }
+        logs.append(entry)
+        if logs.count > maxLogsBufferSize {
+            let drop = logs.count - maxLogsBufferSize
+            for stale in logs.prefix(drop) {
+                knownIds.remove(stale.id)
             }
+            logs.removeFirst(drop)
         }
     }
-    
-    private func stopLogStreaming() {
-        logsTimer?.invalidate()
-        logsTimer = nil
-    }
-    
+
     private func togglePause() {
         isPaused.toggle()
-        
         if isPaused {
-            stopLogStreaming()
+            stopStream()
         } else {
-            startLogStreaming()
+            startStream()
         }
     }
-    
+
     private func clearLogs() {
         logs.removeAll()
+        knownIds.removeAll()
     }
     
     private func formatTime(_ date: Date) -> String {

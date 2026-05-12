@@ -467,7 +467,37 @@ public class CCAddonService: ObservableObject {
             }
             .eraseToAnyPublisher()
     }
-    
+
+    /// Open a persistent SSE stream of add-on resource logs. The connection stays alive until the
+    /// subscriber cancels — the server first emits a short replay of recent history, then live
+    /// entries as they are produced. Each `CCLogEntry` is delivered on the main queue.
+    /// - Parameters:
+    ///   - addon: The add-on. Must have a non-empty `realId` (e.g. `postgresql_…`).
+    ///   - ownerId: Owner ID (`user_xxx` for personal, `orga_xxx` for org). Required.
+    public func streamAddonLogs(
+        addon: CCAddon,
+        ownerId: String?
+    ) -> AnyPublisher<CCLogEntry, CCError> {
+        debugLog("🔍 [CCAddonService] streamAddonLogs called for addon.id=\(addon.id) realId=\(addon.realId ?? "nil") owner=\(ownerId ?? "nil")")
+
+        guard let realId = addon.realId, !realId.isEmpty else {
+            return Fail(error: CCError.httpError(statusCode: 404, message: "Logs not available for this add-on type")).eraseToAnyPublisher()
+        }
+        guard let ownerId = ownerId, !ownerId.isEmpty else {
+            return Fail(error: CCError.httpError(statusCode: 404, message: "Logs not available (missing owner context)")).eraseToAnyPublisher()
+        }
+
+        // 15-minute replay window so the view isn't empty on open; the live tail continues from there.
+        let sinceStr = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-15 * 60))
+        let endpoint = "/logs/organisations/\(ownerId)/resources/\(realId)/logs?since=\(sinceStr)"
+        return httpClient.streamSSE(endpoint, apiVersion: .v4)
+            .compactMap { event -> CCLogEntry? in
+                guard event.name == "RESOURCE_LOG" else { return nil }
+                return CCLogEntry.parseSSEEventData(event.data)
+            }
+            .eraseToAnyPublisher()
+    }
+
     // MARK: - Add-on Metrics
     
     /// Get metrics for an add-on

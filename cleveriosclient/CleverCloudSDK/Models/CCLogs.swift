@@ -2,9 +2,14 @@ import Foundation
 
 // MARK: - Log Models
 
-/// Represents a log entry from Clever Cloud
+/// Represents a log entry from Clever Cloud.
+///
+/// `id` is the **stable wire identifier** (e.g. `"253992374:120:0"` for v4 SSE), used by the live
+/// stream views to dedupe across reconnections. If the wire payload doesn't carry an `id`, we fall
+/// back to a deterministic synthetic key (`timestamp + message hash`) so two parses of the same
+/// log line still compare equal.
 public struct CCLogEntry: Codable, Identifiable {
-    public let id = UUID()
+    public let id: String
     public let timestamp: Date
     public let message: String
     public let level: CCLogLevel
@@ -12,6 +17,7 @@ public struct CCLogEntry: Codable, Identifiable {
     public let instanceId: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case timestamp = "@timestamp"
         case message
         case level
@@ -58,14 +64,27 @@ public struct CCLogEntry: Codable, Identifiable {
         // Optional fields
         self.source = try? container.decode(String.self, forKey: .source)
         self.instanceId = try? container.decode(String.self, forKey: .instanceId)
+
+        if let wireId = try? container.decode(String.self, forKey: .id), !wireId.isEmpty {
+            self.id = wireId
+        } else {
+            self.id = Self.syntheticId(timestamp: self.timestamp, message: self.message)
+        }
     }
 
-    public init(timestamp: Date, message: String, level: CCLogLevel, source: String? = nil, instanceId: String? = nil) {
+    public init(id: String? = nil, timestamp: Date, message: String, level: CCLogLevel, source: String? = nil, instanceId: String? = nil) {
+        self.id = id ?? Self.syntheticId(timestamp: timestamp, message: message)
         self.timestamp = timestamp
         self.message = message
         self.level = level
         self.source = source
         self.instanceId = instanceId
+    }
+
+    /// Fallback identity when the wire didn't carry one. Two CCLogEntry produced from the same
+    /// (timestamp, message) tuple will compare equal — enough for dedup in practice.
+    private static func syntheticId(timestamp: Date, message: String) -> String {
+        return "\(Int(timestamp.timeIntervalSince1970 * 1000))-\(message.hashValue)"
     }
 }
 
@@ -129,6 +148,7 @@ extension CCLogEntry {
             }
 
             entries.append(CCLogEntry(
+                id: json["id"] as? String,
                 timestamp: timestamp,
                 message: message,
                 level: level,
@@ -139,6 +159,51 @@ extension CCLogEntry {
 
         entries.sort { $0.timestamp > $1.timestamp }
         return entries
+    }
+
+    /// Parse a single SSE `data:` payload (one JSON object) into a `CCLogEntry`.
+    /// Returns `nil` if the payload isn't a recognizable log line. Used by the live streaming
+    /// path (`streamApplicationLogs`, `streamAddonLogs`) where each event is parsed on arrival
+    /// instead of accumulating the full stream.
+    public static func parseSSEEventData(_ jsonString: String) -> CCLogEntry? {
+        guard let jsonData = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let message = json["message"] as? String else {
+            return nil
+        }
+
+        let timestamp: Date
+        if let dateStr = json["date"] as? String {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            timestamp = isoFormatter.date(from: dateStr)
+                ?? ISO8601DateFormatter().date(from: dateStr)
+                ?? Date()
+        } else {
+            timestamp = Date()
+        }
+
+        let level: CCLogLevel
+        if let severity = json["severity"] as? String {
+            switch severity.lowercased() {
+            case "debug": level = .debug
+            case "info", "informational": level = .info
+            case "warning", "warn": level = .warning
+            case "error", "err", "critical", "alert", "emergency": level = .error
+            default: level = .info
+            }
+        } else {
+            level = .info
+        }
+
+        return CCLogEntry(
+            id: json["id"] as? String,
+            timestamp: timestamp,
+            message: message,
+            level: level,
+            source: json["service"] as? String,
+            instanceId: json["instanceId"] as? String
+        )
     }
 }
 

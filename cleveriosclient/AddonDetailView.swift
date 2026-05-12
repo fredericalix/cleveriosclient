@@ -39,10 +39,12 @@ struct AddonDetailView: View {
     @State private var selectedLogLevel: CCLogLevel? = nil
     @State private var isPaused = false
     @State private var autoScroll = true
-    @State private var logsTimer: Timer?
+    @State private var logsTimer: Timer?  // legacy, no longer used (replaced by `logStream`)
+    /// Persistent SSE subscription for the add-on logs. Cancelled on disappear / pause.
+    @State private var logStream: AnyCancellable?
+    /// Wire-id dedup set — keeps entries unique across reconnects.
+    @State private var knownLogIds: Set<String> = []
 
-    /// Number of entries fetched on the very first load (recent logs only).
-    private let initialLogsLimit = 50
     /// Hard cap on the rolling buffer; live-tail keeps appending up to this size, oldest drop off.
     private let maxLogsBufferSize = 250
     
@@ -472,7 +474,7 @@ struct AddonDetailView: View {
                             .multilineTextAlignment(.center)
                         
                         Button("Retry") {
-                            loadLogs()
+                            startLogsPolling()
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -1028,69 +1030,67 @@ struct AddonDetailView: View {
     }
     
     // MARK: - Logs Functions
-    
+
+    /// Open the persistent SSE stream of add-on logs. Replaces the "Timer + getAddonLogs" pattern;
+    /// the server pushes a short replay on connect then live entries thereafter.
     private func startLogsPolling() {
-        loadLogs()
-        
-        // Start 3-second timer
-        logsTimer?.invalidate()
-        logsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
-            Task { @MainActor in
-                if !self.isPaused {
-                    self.loadLogs()
-                }
-            }
-        }
-    }
-    
-    private func stopLogsPolling() {
-        logsTimer?.invalidate()
-        logsTimer = nil
-    }
-    
-    private func togglePause() {
-        isPaused.toggle()
-        if !isPaused {
-            loadLogs()
-        }
-    }
-    
-    private func clearLogs() {
-        logs.removeAll()
-    }
-    
-    private func loadLogs() {
-        guard !isPaused else { return }
-        
-        isLoadingLogs = true
+        guard logStream == nil else { return }
+        isLoadingLogs = logs.isEmpty
         logsError = nil
-        
-        cleverCloudSDK.addons.getAddonLogs(
+
+        logStream = cleverCloudSDK.addons.streamAddonLogs(
             addon: addon,
-            ownerId: organizationId,
-            limit: initialLogsLimit
+            ownerId: organizationId
         )
-        .receive(on: DispatchQueue.main)
         .sink(
             receiveCompletion: { completion in
-                if case .failure(let error) = completion {
-                    debugLog("❌ Failed to load logs: \(error)")
-                    self.logsError = error.localizedDescription
-                }
                 self.isLoadingLogs = false
+                self.logStream = nil
+                if case .failure(let error) = completion {
+                    debugLog("❌ Add-on logs stream failed: \(error)")
+                    self.logsError = error.localizedDescription
+                } else {
+                    debugLog("ℹ️ Add-on logs stream closed by server")
+                }
             },
-            receiveValue: { newLogs in
-                // Only add new logs that aren't already in the list
-                let existingIds = Set(self.logs.map { $0.id })
-                let uniqueNewLogs = newLogs.filter { !existingIds.contains($0.id) }
-                
-                // Prepend new logs and cap the rolling buffer (oldest drop off)
-                self.logs = (uniqueNewLogs + self.logs).prefix(maxLogsBufferSize).map { $0 }
-                
-                debugLog("✅ Loaded \(newLogs.count) logs (\(uniqueNewLogs.count) new)")
+            receiveValue: { entry in
+                self.isLoadingLogs = false
+                self.appendLog(entry)
             }
         )
-        .store(in: &cancellables)
+    }
+
+    private func stopLogsPolling() {
+        logStream?.cancel()
+        logStream = nil
+    }
+
+    private func togglePause() {
+        isPaused.toggle()
+        if isPaused {
+            stopLogsPolling()
+        } else {
+            startLogsPolling()
+        }
+    }
+
+    private func clearLogs() {
+        logs.removeAll()
+        knownLogIds.removeAll()
+    }
+
+    private func appendLog(_ entry: CCLogEntry) {
+        guard !isPaused else { return }
+        guard knownLogIds.insert(entry.id).inserted else { return }
+        // Existing UI sorts newest-first via prepend; keep that ordering for source-compat.
+        logs.insert(entry, at: 0)
+        if logs.count > maxLogsBufferSize {
+            let drop = logs.count - maxLogsBufferSize
+            for stale in logs.suffix(drop) {
+                knownLogIds.remove(stale.id)
+            }
+            logs.removeLast(drop)
+        }
     }
     
     // MARK: - Actions
