@@ -91,10 +91,11 @@ struct AppRootView: View {
                     appState.stopPolling()
                 }
             case .active:
-                if oldPhase != .active && coordinator.isAuthenticated {
-                    debugLog("ℹ️ 🔄 Scene → active — requesting foreground refresh")
-                    // Ask ContentView to re-arm polling + immediate refresh. ContentView owns the
-                    // org-aware refresh path, so route through the existing notification channel.
+                // Only refresh when truly coming back from background. SwiftUI emits an
+                // `.inactive → .active` transition at launch which would otherwise stack a
+                // redundant refresh on top of ContentView's onAppear loadData().
+                if oldPhase == .background && coordinator.isAuthenticated {
+                    debugLog("ℹ️ 🔄 Scene → active (from background) — requesting foreground refresh")
                     NotificationCenter.default.post(name: .appRefreshRequested, object: nil)
                 }
             @unknown default:

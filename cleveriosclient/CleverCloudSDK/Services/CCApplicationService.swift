@@ -450,11 +450,19 @@ public class CCApplicationService: ObservableObject {
         return httpClient.get("/self/applications/\(applicationId)/deployments", apiVersion: .v2)
     }
     
-    /// Trigger a new deployment
-    /// - Parameter applicationId: The application ID
-    /// - Returns: Publisher with deployment information
-    public func deploy(applicationId: String) -> AnyPublisher<CCDeployment, CCError> {
-        return httpClient.post("/self/applications/\(applicationId)/deployments", body: EmptyRequest(), apiVersion: .v2)
+    /// Trigger a new deployment (redeploy).
+    ///
+    /// The Clever Cloud v2 redeploy endpoint is `POST /applications/{appId}/instances` — the
+    /// `/deployments` endpoint is GET-only and rejects POST with 405. Prefer
+    /// `restartApplication(applicationId:organizationId:)` at call sites; this method is kept for
+    /// source-compat and now routes through the correct endpoint.
+    /// - Parameters:
+    ///   - applicationId: The application ID
+    ///   - organizationId: Optional organization ID. If nil, uses personal space (/self).
+    /// - Returns: Publisher completing on success.
+    public func deploy(applicationId: String, organizationId: String? = nil) -> AnyPublisher<EmptyResponse, CCError> {
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId, path: "/instances")
+        return httpClient.postWithoutBody(endpoint, apiVersion: .v2)
     }
     
     /// Cancel a deployment

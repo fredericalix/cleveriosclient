@@ -1746,7 +1746,9 @@ struct ApplicationDetailView: View {
         isRedeploying = true
         actionMessage = "Redeploying application..."
 
-        cleverCloudSDK.applications.deploy(applicationId: application.id)
+        // The redeploy endpoint is POST /v2/.../applications/{appId}/instances (NOT /deployments —
+        // that one is GET-only). restartApplication wraps exactly that, with org-context routing.
+        cleverCloudSDK.applications.restartApplication(applicationId: application.id, organizationId: organizationId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in

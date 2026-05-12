@@ -1627,22 +1627,36 @@ struct ContentView: View {
             applicationsProvider: { applications },
             organizationIdProvider: { selectedOrganization?.id },
             dataRefreshTick: {
-                testGetApplications()
-                testGetAddons()
+                // Silent + skip while a detail (app/addon) is open: status updates already arrive
+                // over the WebSocket, so a hidden list refresh would only burn API calls and risk
+                // flashing the underlying dashboard when the user returns to it.
+                guard selectedDetailView == .dashboard else { return }
+                testGetApplications(silent: true)
+                testGetAddons(silent: true)
             }
         )
     }
 
     // MARK: - CCApplicationService Test Methods
-    
-    private func testGetApplications(onLoaded: (() -> Void)? = nil) {
+
+    /// Fetch the applications list.
+    /// - Parameters:
+    ///   - silent: When `true`, suppress the "Loading…" banner and the `isLoading` flag — used by
+    ///     the periodic 10 s tick to avoid the visible flash. The list is updated only when the
+    ///     response differs from the current one (diff-aware), so SwiftUI doesn't re-render rows
+    ///     that haven't changed. Manual paths (pull-to-refresh, org switch, Cmd+R) keep the
+    ///     default `false` and the original feedback UI.
+    ///   - onLoaded: Called on success after the list assignment.
+    private func testGetApplications(silent: Bool = false, onLoaded: (() -> Void)? = nil) {
         // Determine which organization to use
         let targetOrganization = selectedOrganization ?? organizations.first
         let orgName = targetOrganization?.name ?? "Default"
         let orgId = targetOrganization?.id
 
-        errorMessage = "Loading applications for \(orgName)..."
-        isLoading = true
+        if !silent {
+            errorMessage = "Loading applications for \(orgName)..."
+            isLoading = true
+        }
 
         // Use organization-specific method if organization is selected
         let applicationsPublisher: AnyPublisher<[CCApplication], CCError>
@@ -1659,16 +1673,22 @@ struct ContentView: View {
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
-                    isLoading = false
-                    if case .failure(let error) = completion {
-                        errorMessage = "getApplications failed for \(orgName): \(error.localizedDescription)"
-                    } else {
-                        errorMessage = "✅ Applications loaded for \(orgName)!"
+                    if !silent {
+                        isLoading = false
+                        if case .failure(let error) = completion {
+                            errorMessage = "getApplications failed for \(orgName): \(error.localizedDescription)"
+                        } else {
+                            errorMessage = "✅ Applications loaded for \(orgName)!"
+                        }
+                    }
+                    if case .finished = completion {
                         onLoaded?()
                     }
                 },
                 receiveValue: { apps in
-                    applications = apps
+                    if applications != apps {
+                        applications = apps
+                    }
                 }
             )
             .store(in: &cancellables)
@@ -1743,21 +1763,28 @@ struct ContentView: View {
     
     // MARK: - CCAddonService Test Methods
     
-    private func testGetAddons() {
+    /// Fetch the add-ons list.
+    /// - Parameter silent: When `true`, suppress the pre-emptive `addons = []` clear, the
+    ///   "Loading…" banner and the `isLoading` flag — used by the periodic 10 s tick to avoid the
+    ///   visible list flash. The list is updated only when the response differs from the current
+    ///   one. Manual paths (pull-to-refresh, org switch) keep the default `false` and the
+    ///   original "Loading…" feedback.
+    private func testGetAddons(silent: Bool = false) {
         // Determine which organization to use
         let targetOrganization = selectedOrganization ?? organizations.first
         let orgName = targetOrganization?.name ?? "Default"
         let orgId = targetOrganization?.id
-        
-        // Clear previous state
-        addonError = nil
-        addons = []
-        errorMessage = "Loading add-ons for \(orgName)..."
-        isLoading = true
-        
+
+        if !silent {
+            addonError = nil
+            addons = []
+            errorMessage = "Loading add-ons for \(orgName)..."
+            isLoading = true
+        }
+
         // Use organization-specific method if organization is selected
         let addonsPublisher: AnyPublisher<[CCAddon], CCError>
-        
+
         if let orgId = orgId, orgId.hasPrefix("orga_") {
             // Real organization - use organization addons endpoint
             addonsPublisher = cleverCloudSDK.getOrganizationAddons(organizationId: orgId)
@@ -1765,21 +1792,25 @@ struct ContentView: View {
             // Personal space - use user addons endpoint
             addonsPublisher = cleverCloudSDK.getUserAddons()
         }
-        
+
         addonsPublisher
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
-                    isLoading = false
-                    if case .failure(let error) = completion {
-                        addonError = error.localizedDescription
-                        errorMessage = "getAddons failed for \(orgName): \(error.localizedDescription)"
-                    } else {
-                        errorMessage = "✅ Add-ons loaded successfully for \(orgName)!"
+                    if !silent {
+                        isLoading = false
+                        if case .failure(let error) = completion {
+                            addonError = error.localizedDescription
+                            errorMessage = "getAddons failed for \(orgName): \(error.localizedDescription)"
+                        } else {
+                            errorMessage = "✅ Add-ons loaded successfully for \(orgName)!"
+                        }
                     }
                 },
                 receiveValue: { loadedAddons in
-                    addons = loadedAddons
+                    if addons != loadedAddons {
+                        addons = loadedAddons
+                    }
                 }
             )
             .store(in: &cancellables)
