@@ -41,11 +41,27 @@ The SDK is accessed through `coordinator.cleverCloudSDK` (lazy singleton). Consu
 
 `AppState` (`cleveriosclient/AppState.swift`) is an `@Observable final class` that serves as the single source of truth for shared data (`organizations`, `applications`, `addons`, `applicationStatuses`) and owns the intelligent polling system. It lives in the SwiftUI environment (`@Environment(AppState.self)`) and survives view recreations — critical on iPad where SwiftUI rebuilds the `ContentView` struct during `NavigationSplitView` layout, which would reset any `@State` polling guard.
 
-The polling system runs two timers:
-- **Status polling** (every 15s) — refreshes `applicationStatuses` via `CCApplicationService.getApplicationInstances` per app
-- **Data refresh** (every 10s) — refreshes the apps + addons lists via the `dataRefreshTick` closure
+Two timers run alongside a push event stream:
+- **Status polling fallback** (every 15s) — refreshes `applicationStatuses` via `CCApplicationService.getApplicationInstances` per app. Safety net only; the WebSocket event stream is the primary source of truth for status changes.
+- **Data refresh** (every 10s) — refreshes the apps + addons lists via the `dataRefreshTick` closure.
+- **Live events** — `CCEventsService` pushes `DEPLOYMENT_ACTION_BEGIN/_END` events that `AppState.handlePlatformEvent` maps directly into `applicationStatuses[appId]` (WIP→Deploying, OK→Running, FAIL→Failed, CANCELLED→Stopped).
+
+Race-protection and debouncing:
+- Per-app status fetches are tagged with the org they were issued under (captured into the sink). Responses that land after an org switch are dropped before mutating `applicationStatuses` — see `loadApplicationStatuses(for:)`.
+- `cancelInFlight()` cancels all in-flight status requests and clears the dict. ContentView calls it from `autoRefreshOrganizationData` before re-launching loads on org switch.
+- `markDataRefreshed()` stamps `lastDataRefreshAt` so the next auto-tick is debounced (3s window). Manual paths (pull-to-refresh, org switch, Cmd+R) call this to avoid piling on the timer-driven refresh.
+- `refreshApplicationStatuses(forced:)` — timer-driven calls pass `forced: false` and respect the same 3s debounce against `lastStatusRefreshAt`.
+- `.retry(1)` before `.timeout(10s)` on each status publisher absorbs transient Wi-Fi/cellular handoff failures without painting the app as "Error".
 
 `AppState.startPolling(applicationsProvider:organizationIdProvider:dataRefreshTick:)` is idempotent (guard on `pollingTimer == nil`). ContentView passes closures that read its current `@State` arrays so AppState doesn't need to own all data state.
+
+### scenePhase lifecycle (AppRootView)
+
+`AppRootView` in `test0App.swift` observes `@Environment(\.scenePhase)`:
+- `.background` / `.inactive` (when coming from `.active`) → `appState?.stopPolling()`. Timers and WebSocket are torn down.
+- `.active` when `oldPhase == .background` → posts `appRefreshRequested`. ContentView's handler calls `startAppStatePolling()` (idempotent re-arm) then `autoRefreshOrganizationData(for:)`. The launch-time `.inactive → .active` transition is intentionally ignored so it doesn't stack a redundant load on top of `ContentView.onAppear`.
+
+`AppRootView` also observes `coordinator.isAuthenticated` and calls `stopPolling()` on logout immediately rather than waiting for `ContentView.onDisappear`.
 
 ### SDK Layer (`CleverCloudSDK/`)
 
@@ -65,7 +81,7 @@ The polling system runs two timers:
 - `CCDeploymentService` - Deployment history, restart, redeploy
 - `CCEnvironmentService` - Environment variables, app config, domains
 - `CCNetworkGroupService` - Network groups, members, peers, WireGuard configs
-- `CCEventsService` - Polling-based status updates (WebSocket removed, polling every 15s). The lifecycle (`connect()`/`disconnect()`) is driven by `AppState.startPolling()` / `stopPolling()`, not by Views directly.
+- `CCEventsService` - Real WebSocket client targeting `wss://api.clever-cloud.com/v2/events/event-socket`. Protocol reverse-engineered from `@clevercloud/client`: open WS, send `{"message_type":"oauth","authorization":"<OAuth 1.0a header signed for GET https://api.clever-cloud.com/v2/events/>"}` as the first frame; handle `socket_ready` (handshake done), heartbeat (reply pong), `type=error id=2001` (auth rejected), and `event: DEPLOYMENT_ACTION_BEGIN/_END` whose `data` field is a JSON string and must be re-parsed. Exponential reconnect backoff up to 30s. `connect()`/`disconnect()` are driven by `AppState.startPolling()` / `stopPolling()` and `scenePhase`, never by Views directly. `CCConnectionState` is Sendable (`.failed(String)`, not `.failed(Error)`) to satisfy Swift 6 strict-concurrency.
 - `CCScalabilityService` - Instance/flavor scaling configuration
 - `CCApplicationMetricsService` - Application metrics via Warp10
 - `CCWarp10Client` - Direct Warp10 time-series queries (tokens cached for 5 days)
@@ -113,6 +129,17 @@ Most views live directly in `cleveriosclient/` (not in a `Views/` subdirectory):
 ### Async Pattern
 
 All SDK calls return `AnyPublisher<T, CCError>` (Combine). Views subscribe with `.sink()`, store subscriptions in `Set<AnyCancellable>`, and dispatch to main queue with `.receive(on: DispatchQueue.main)`.
+
+### Silent Background Refresh
+
+`ContentView.testGetApplications(silent:onLoaded:)` and `testGetAddons(silent:)` take a `silent: Bool = false` flag.
+- **Default (silent: false)** — used by manual paths (`autoRefreshOrganizationData`, pull-to-refresh, Cmd+R via `appRefreshRequested`). Sets `errorMessage = "Loading…"`, `isLoading = true`, and for addons clears `addons = []` for clear "I'm reloading" feedback.
+- **silent: true** — used by the 10s `dataRefreshTick`. Skips all UI feedback mutations. The list is replaced **only if different** (`if addons != loadedAddons`) so SwiftUI doesn't re-render unchanged rows.
+- The data-refresh tick is additionally **paused while a detail view is open** (`guard selectedDetailView == .dashboard else { return }` in `dataRefreshTick`). Status changes still arrive via the WebSocket; the underlying list refresh would only burn API calls and risk flashing the dashboard on return.
+
+### Redeploy endpoint
+
+`POST /v2/.../applications/{appId}/instances` — **not** `/deployments`, which is GET-only (POST returns 405). Use `CCApplicationService.restartApplication(applicationId:organizationId:)` at call sites. `CCApplicationService.deploy(...)` is kept for source-compat but routes through the same correct endpoint.
 
 ### Logging
 
