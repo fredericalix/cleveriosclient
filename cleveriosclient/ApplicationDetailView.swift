@@ -37,6 +37,9 @@ struct ApplicationDetailView: View {
     @State private var isRedeploying = false
     @State private var actionMessage: String?
     @State private var showingDeleteConfirmation = false
+    @State private var showingStopConfirmation = false
+    @State private var showingRestartConfirmation = false
+    @State private var showingRedeployConfirmation = false
     
     // Real status tracking
     @State private var applicationStatus = "Loading..."
@@ -117,6 +120,24 @@ struct ApplicationDetailView: View {
         }
         .sheet(isPresented: $showingEditVariable) {
             editVariableSheet
+        }
+        .alert("Stop \(application.name)?", isPresented: $showingStopConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Stop", role: .destructive) { stopApplication() }
+        } message: {
+            Text("Current state: \(applicationStatus). Stopping the application will take it offline until you start it again.")
+        }
+        .alert("Restart \(application.name)?", isPresented: $showingRestartConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Restart") { restartApplication() }
+        } message: {
+            Text("Current state: \(applicationStatus). Restarting will briefly interrupt traffic to the application.")
+        }
+        .alert("Redeploy \(application.name)?", isPresented: $showingRedeployConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Redeploy") { redeployApplication() }
+        } message: {
+            Text("Current state: \(applicationStatus). Redeploying rebuilds and ships the latest commit; existing instances are replaced once the new build is healthy.")
         }
     }
     
@@ -216,7 +237,7 @@ struct ApplicationDetailView: View {
                         color: .red,
                         isLoading: isStopping
                     ) {
-                        stopApplication()
+                        showingStopConfirmation = true
                     }
 
                     ActionButton(
@@ -225,7 +246,7 @@ struct ApplicationDetailView: View {
                         color: .orange,
                         isLoading: isRestarting
                     ) {
-                        restartApplication()
+                        showingRestartConfirmation = true
                     }
 
                     ActionButton(
@@ -234,7 +255,7 @@ struct ApplicationDetailView: View {
                         color: .purple,
                         isLoading: isRedeploying
                     ) {
-                        redeployApplication()
+                        showingRedeployConfirmation = true
                     }
 
                     ActionButton(
@@ -248,6 +269,17 @@ struct ApplicationDetailView: View {
                 }
                 .padding(.horizontal, 2)
             }
+
+            // Live state indicator near the action buttons
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(colorForStatus(applicationStatus))
+                    .frame(width: 8, height: 8)
+                Text("Current state: \(applicationStatus)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
 
             // Action message display
             if let actionMessage = actionMessage {
