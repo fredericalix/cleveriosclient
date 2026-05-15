@@ -62,6 +62,7 @@ struct ContentView: View {
     
     // MARK: - Creation Views State
     @State private var showingCreateAddon = false
+    @State private var showingSettings = false
 
     // MARK: - Favorites and Filtering
     @State private var favoriteOrgIds: [String] = []
@@ -172,10 +173,15 @@ struct ContentView: View {
     }
 
     var body: some View {
-        if isIpad {
-            iPadLayout
-        } else {
-            iPhoneLayout
+        Group {
+            if isIpad {
+                iPadLayout
+            } else {
+                iPhoneLayout
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
     }
     
@@ -882,6 +888,12 @@ struct ContentView: View {
 
     private var accountMenuButton: some View {
         Menu {
+            Button {
+                showingSettings = true
+            } label: {
+                Label("Settings", systemImage: "gear")
+            }
+            Divider()
             Button(role: .destructive) {
                 coordinator.logout()
             } label: {

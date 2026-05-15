@@ -15,7 +15,8 @@ struct ApplicationDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingAddVariable = false
-    @State private var selectedTab = 1
+    @State private var selectedTab: ApplicationTab = .configuration
+    @State private var tabOrder: [ApplicationTab] = ApplicationTabOrder.load()
     
     // New variable form
     @State private var newVariableName = ""
@@ -127,54 +128,17 @@ struct ApplicationDetailView: View {
             applicationHeader
             
             TabView(selection: $selectedTab) {
-                configurationTabContent
-                    .tabItem {
-                        Image(systemName: "gear")
-                        Text("Configuration")
-                    }
-                    .tag(1)
-
-                overviewTab
-                    .tabItem {
-                        Image(systemName: "chart.bar")
-                        Text("Metrics")
-                    }
-                    .tag(2)
-
-                deploymentsTab
-                    .tabItem {
-                        Image(systemName: "arrow.up.circle")
-                        Text("Deployments")
-                    }
-                    .tag(3)
-
-                logsTab
-                    .tabItem {
-                        Image(systemName: "doc.text.magnifyingglass")
-                        Text("Logs")
-                    }
-                    .tag(4)
-
-                environmentVariablesTab
-                    .tabItem {
-                        Image(systemName: "key.fill")
-                        Text("Environment")
-                    }
-                    .tag(7)
-
-                domainsTab
-                    .tabItem {
-                        Image(systemName: "globe")
-                        Text("Domains")
-                    }
-                    .tag(5)
-
-                advancedTab
-                    .tabItem {
-                        Image(systemName: "slider.horizontal.3")
-                        Text("Advanced")
-                    }
-                    .tag(6)
+                ForEach(tabOrder) { tab in
+                    tabContent(for: tab)
+                        .tabItem {
+                            Image(systemName: tab.icon)
+                            Text(tab.title)
+                        }
+                        .tag(tab)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .applicationTabOrderChanged)) { _ in
+                tabOrder = ApplicationTabOrder.load()
             }
         }
         .onAppear {
@@ -297,6 +261,19 @@ struct ApplicationDetailView: View {
         .background(Color(.systemGray6))
     }
     
+    @ViewBuilder
+    private func tabContent(for tab: ApplicationTab) -> some View {
+        switch tab {
+        case .configuration: configurationTabContent
+        case .metrics: overviewTab
+        case .deployments: deploymentsTab
+        case .logs: logsTab
+        case .environment: environmentVariablesTab
+        case .domains: domainsTab
+        case .advanced: advancedTab
+        }
+    }
+
     private func metadataChip(icon: String, iconColor: Color, text: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
