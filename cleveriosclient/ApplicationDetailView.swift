@@ -15,7 +15,7 @@ struct ApplicationDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingAddVariable = false
-    @State private var selectedTab = 0
+    @State private var selectedTab = 1
     
     // New variable form
     @State private var newVariableName = ""
@@ -110,7 +110,7 @@ struct ApplicationDetailView: View {
     var body: some View {
         applicationContent
             .navigationTitle(application.name)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddVariable) {
             addVariableSheet
         }
@@ -126,33 +126,21 @@ struct ApplicationDetailView: View {
             // Header with application info
             applicationHeader
             
-            // TabView with beautiful bottom tabs
             TabView(selection: $selectedTab) {
-                // Tab 1: Environment Variables (Priority 1)
-                environmentVariablesTab
-                    .tabItem {
-                        Image(systemName: "lock.fill")
-                        Text("Environment")
-                    }
-                    .tag(0)
-                
-                // Tab 2: Configuration (Priority 2)
                 configurationTabContent
                     .tabItem {
                         Image(systemName: "gear")
                         Text("Configuration")
                     }
                     .tag(1)
-                
-                // Tab 3: Overview & Billing (Priority 3)
+
                 overviewTab
                     .tabItem {
                         Image(systemName: "chart.bar")
                         Text("Metrics")
                     }
                     .tag(2)
-                
-                // Tab 4: Deployments
+
                 deploymentsTab
                     .tabItem {
                         Image(systemName: "arrow.up.circle")
@@ -160,7 +148,6 @@ struct ApplicationDetailView: View {
                     }
                     .tag(3)
 
-                // Tab 5: Logs
                 logsTab
                     .tabItem {
                         Image(systemName: "doc.text.magnifyingglass")
@@ -168,7 +155,13 @@ struct ApplicationDetailView: View {
                     }
                     .tag(4)
 
-                // Tab 6: Domains & Networking
+                environmentVariablesTab
+                    .tabItem {
+                        Image(systemName: "key.fill")
+                        Text("Environment")
+                    }
+                    .tag(7)
+
                 domainsTab
                     .tabItem {
                         Image(systemName: "globe")
@@ -176,7 +169,6 @@ struct ApplicationDetailView: View {
                     }
                     .tag(5)
 
-                // Tab 7: Advanced Settings
                 advancedTab
                     .tabItem {
                         Image(systemName: "slider.horizontal.3")
@@ -209,61 +201,41 @@ struct ApplicationDetailView: View {
     // MARK: - Header Section
     
     private var applicationHeader: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // App Status Row
-            HStack(spacing: 16) {
-                // App Icon & Basic Info
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Image(systemName: "app.badge.fill")
-                            .foregroundColor(.purple)
-                            .font(.title)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(application.name)
-                                .font(.title2)
-                                .fontWeight(.bold)
-                            
-                            Text("ID: \(application.id)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        // Status Badge
-                        statusBadge
-                    }
+            HStack(spacing: 12) {
+                Image(systemName: "app.badge.fill")
+                    .foregroundColor(.purple)
+                    .font(.title2)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(application.name)
+                        .font(.title3)
+                        .fontWeight(.bold)
+
+                    Text(application.id)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
+
+                Spacer()
+
+                statusBadge
             }
-            
-            // Instance Info Row
-            HStack(spacing: 20) {
-                InfoCard(
-                    icon: "cpu",
-                    title: "Instance",
-                    value: instanceDisplayName,
-                    subtitle: instanceSpecs
-                )
-                
-                InfoCard(
-                    icon: "location",
-                    title: "Zone",
-                    value: application.zone.uppercased(),
-                    subtitle: "Region"
-                )
-                
-                InfoCard(
-                    icon: "clock",
-                    title: "Created",
-                    value: formatDate(Date()),
-                    subtitle: "Date"
-                )
+
+            // Compact metadata row (replaces the 3 InfoCards)
+            HStack(spacing: 14) {
+                metadataChip(icon: "cpu", iconColor: .blue, text: instanceDisplayName)
+                metadataChip(icon: "location.fill", iconColor: .blue, text: application.zone.uppercased())
+                metadataChip(icon: "clock", iconColor: .blue, text: formatDate(Date()))
+                Spacer(minLength: 0)
             }
+            .font(.caption)
             
-            // Quick Actions - Organized in two rows
-            VStack(spacing: 8) {
-                // Row 1: State Controls
+            // Quick Actions - Horizontal scrolling chips
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ActionButton(
                         title: isStarting ? "Starting..." : "Start",
@@ -292,11 +264,6 @@ struct ApplicationDetailView: View {
                         restartApplication()
                     }
 
-                    Spacer()
-                }
-
-                // Row 2: Deployment & Refresh
-                HStack(spacing: 12) {
                     ActionButton(
                         title: isRedeploying ? "Redeploying..." : "Redeploy",
                         icon: isRedeploying ? "hourglass" : "arrow.up.doc",
@@ -314,11 +281,10 @@ struct ApplicationDetailView: View {
                     ) {
                         refreshApplicationData()
                     }
-
-                    Spacer()
                 }
+                .padding(.horizontal, 2)
             }
-            
+
             // Action message display
             if let actionMessage = actionMessage {
                 Text(actionMessage)
@@ -331,19 +297,18 @@ struct ApplicationDetailView: View {
         .background(Color(.systemGray6))
     }
     
-    private var statusBadge: some View {
+    private func metadataChip(icon: String, iconColor: Color, text: String) -> some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(colorForStatus(applicationStatus))
-                .frame(width: 8, height: 8)
-            Text(applicationStatus)
-                .font(.caption)
-                .fontWeight(.medium)
+            Image(systemName: icon)
+                .foregroundStyle(iconColor)
+            Text(text)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(colorForStatus(applicationStatus).opacity(0.1))
-        .cornerRadius(12)
+    }
+
+    private var statusBadge: some View {
+        StatusPill(text: applicationStatus, tint: colorForStatus(applicationStatus))
     }
     
     private func colorForStatus(_ status: String) -> Color {
@@ -397,6 +362,7 @@ struct ApplicationDetailView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                     .padding(.horizontal)
+                    .padding(.top)
                 
                 // Instance Type Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -495,7 +461,7 @@ struct ApplicationDetailView: View {
                     
                     // Features overview
                     VStack(alignment: .leading, spacing: 8) {
-                        FeatureBadge(icon: "gear.2", text: "4 Scaling Strategies")
+                        FeatureBadge(icon: "gearshape.2", text: "4 Scaling Strategies")
                         FeatureBadge(icon: "rectangle.stack", text: "Preset Management")
                         FeatureBadge(icon: "chart.line.uptrend.xyaxis", text: "Real-time Validation")
                         FeatureBadge(icon: "eurosign.circle", text: "Cost Estimation")
@@ -686,21 +652,20 @@ struct ApplicationDetailView: View {
         }
     }
     
-    // MARK: - Tab 1: Environment Variables (Priority 1)
+    // MARK: - Tab: Environment Variables
     
     private var environmentVariablesTab: some View {
         VStack(spacing: 0) {
-            // Header with Add Button
             HStack {
                 Text("Environment Variables")
                     .font(.title2)
                     .fontWeight(.bold)
-                
+
                 Spacer()
-                
-                Button(action: {
+
+                Button {
                     showingAddVariable = true
-                }) {
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
                         Text("Add Variable")
@@ -711,30 +676,20 @@ struct ApplicationDetailView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
-            
+
             if isLoading {
-                VStack(spacing: 16) {
+                ContentUnavailableView {
+                    Label("Loading environment variables\u{2026}", systemImage: "lock.doc")
+                } description: {
                     ProgressView()
-                    Text("Loading environment variables...")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if environmentVariables.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "lock.doc")
-                        .font(.system(size: 50))
-                        .foregroundColor(.secondary)
-                    
-                    Text("No Environment Variables")
-                        .font(.title2)
-                        .fontWeight(.medium)
-                    
-                    Text("Add environment variables to configure your application")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                    
+                ContentUnavailableView {
+                    Label("No environment variables", systemImage: "lock.doc")
+                } description: {
+                    Text("Add environment variables to configure your application.")
+                } actions: {
                     Button("Add First Variable") {
                         showingAddVariable = true
                     }
@@ -989,33 +944,28 @@ struct ApplicationDetailView: View {
     private var deploymentHistoryView: some View {
         VStack(alignment: .leading, spacing: 12) {
             if isLoadingDeployments {
-                ProgressView("Loading deployments...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView {
+                    Label("Loading deployments\u{2026}", systemImage: "arrow.up.circle")
+                } description: {
+                    ProgressView()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = deploymentsError {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text("Failed to load deployments")
-                        .font(.headline)
+                ContentUnavailableView {
+                    Label("Failed to load deployments", systemImage: "exclamationmark.triangle")
+                } description: {
                     Text(error)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Button("Retry") {
-                        loadDeployments()
-                    }
-                    .buttonStyle(.borderedProminent)
+                } actions: {
+                    Button("Retry") { loadDeployments() }
+                        .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if deployments.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "tray")
-                        .font(.largeTitle)
-                        .foregroundColor(.secondary)
-                    Text("No deployments yet")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                }
+                ContentUnavailableView(
+                    "No deployments yet",
+                    systemImage: "tray",
+                    description: Text("Deployments will appear here once you ship your first build.")
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
