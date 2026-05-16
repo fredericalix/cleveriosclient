@@ -62,7 +62,8 @@ struct ContentView: View {
     
     // MARK: - Creation Views State
     @State private var showingCreateAddon = false
-    
+    @State private var showingSettings = false
+
     // MARK: - Favorites and Filtering
     @State private var favoriteOrgIds: [String] = []
     
@@ -172,10 +173,15 @@ struct ContentView: View {
     }
 
     var body: some View {
-        if isIpad {
-            iPadLayout
-        } else {
-            iPhoneLayout
+        Group {
+            if isIpad {
+                iPadLayout
+            } else {
+                iPhoneLayout
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
     }
     
@@ -187,8 +193,8 @@ struct ContentView: View {
                 .navigationTitle("Clever Cloud")
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        logoutButton
+                    ToolbarItem(placement: .topBarLeading) {
+                        accountMenuButton
                     }
                 }
         } content: {
@@ -286,9 +292,27 @@ struct ContentView: View {
                 }
                 .padding(.top)
             }
+            .refreshable {
+                if let org = selectedOrganization {
+                    autoRefreshOrganizationData(for: org)
+                } else {
+                    loadData()
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
-            .navigationBarItems(leading: cleverCloudTitleLogo, trailing: logoutButton)
+            .searchable(text: $appSearchText, prompt: "Search applications")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    accountMenuButton
+                }
+                ToolbarItem(placement: .principal) {
+                    organizationPickerMenu
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    appStatusFilterMenu
+                }
+            }
             .navigationDestination(for: AppDestination.self) { destination in
                 switch destination {
                 case .applicationDetail(let app, let orgId):
@@ -475,9 +499,8 @@ struct ContentView: View {
                     // Welcome section
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            cleverCloudTitleLogo
+                            accountMenuButton
                             Spacer()
-                            logoutButton
                         }
                         
                         if let selectedOrg = selectedOrganization {
@@ -566,9 +589,16 @@ struct ContentView: View {
                 }
                 .padding()
             }
+            .refreshable {
+                if let org = selectedOrganization {
+                    autoRefreshOrganizationData(for: org)
+                } else {
+                    loadData()
+                }
+            }
         }
     }
-    
+
     // MARK: - Helper Views for iPad
     
     private func quickStatCard(title: String, count: Int, icon: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -854,35 +884,87 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Clever Cloud Title Logo
-    
-    private var cleverCloudTitleLogo: some View {
-        Image("CleverCloudLogo")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(height: 32)
-            .accessibility(label: Text("Clever Cloud"))
-    }
-    
-    // MARK: - Logout Button
-    
-    private var logoutButton: some View {
-        Button(action: {
-            coordinator.logout()
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 14, weight: .medium))
-                Text("Logout")
-                    .font(.system(size: 14, weight: .medium))
+    // MARK: - Account Menu Button
+
+    private var accountMenuButton: some View {
+        Menu {
+            Button {
+                showingSettings = true
+            } label: {
+                Label("Settings", systemImage: "gear")
             }
-            .foregroundColor(.red)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.red.opacity(0.1))
-            .cornerRadius(8)
+            Divider()
+            Button(role: .destructive) {
+                coordinator.logout()
+            } label: {
+                Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+        } label: {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 22, weight: .medium))
         }
-        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Account menu")
+    }
+
+    // MARK: - Organization Picker Menu
+
+    private var organizationPickerMenu: some View {
+        Menu {
+            ForEach(organizations) { org in
+                Button {
+                    selectedOrganization = org
+                } label: {
+                    if selectedOrganization?.id == org.id {
+                        Label(org.name, systemImage: "checkmark")
+                    } else {
+                        Text(org.name)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(selectedOrganization?.name ?? "Select org")
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .font(.system(size: 15, weight: .medium))
+            .frame(maxWidth: 200)
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Organization picker")
+    }
+
+    // MARK: - App Status Filter Menu
+
+    private var appStatusFilterMenu: some View {
+        Menu {
+            Button {
+                appFilterStatus = nil
+            } label: {
+                if appFilterStatus == nil {
+                    Label("All", systemImage: "checkmark")
+                } else {
+                    Text("All")
+                }
+            }
+            ForEach(AppStatus.allCases.filter { $0 != .all }, id: \.self) { status in
+                Button {
+                    appFilterStatus = (appFilterStatus == status) ? nil : status
+                } label: {
+                    if appFilterStatus == status {
+                        Label(status.rawValue, systemImage: "checkmark")
+                    } else {
+                        Label(status.rawValue, systemImage: status.icon)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: appFilterStatus == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 18, weight: .medium))
+        }
+        .accessibilityLabel("Filter applications by status")
     }
     
     // MARK: - SDK Status Header
@@ -979,31 +1061,18 @@ struct ContentView: View {
             }
             
             if let selectedOrg = selectedOrganization {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Selected: \(selectedOrg.name)")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        if isLoading && errorMessage?.contains("Switching to") == true {
-                            Text("Auto-refreshing data...")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    if isLoading {
+                organizationRowClickable(selectedOrg)
+
+                if isLoading && errorMessage?.contains("Switching to") == true {
+                    HStack(spacing: 6) {
                         ProgressView()
                             .scaleEffect(0.7)
+                        Text("Auto-refreshing data...")
+                            .font(.caption)
+                            .foregroundColor(.blue)
                     }
+                    .padding(.horizontal, 12)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background((isLoading ? Color.blue : Color.green).opacity(0.1))
-                .cornerRadius(8)
-                .animation(.easeInOut(duration: 0.3), value: isLoading)
             }
             
             if let orgError = organizationError {
@@ -1014,31 +1083,7 @@ struct ContentView: View {
                     .padding(.horizontal, 12)
                     .background(Color.red.opacity(0.1))
                     .cornerRadius(8)
-            }
-            
-            // Filter Picker
-            Picker("Filter", selection: $orgFilterMode) {
-                ForEach(OrgFilterMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.vertical, 8)
-            
-            // Organizations List - Clickable for selection
-            if !filteredOrganizations.isEmpty {
-                LazyVStack(spacing: 12) {
-                    ForEach(filteredOrganizations) { org in
-                        organizationRowClickable(org)
-                    }
-                }
-            } else if organizationError == nil && !organizations.isEmpty {
-                EmptyStateView(
-                    icon: "magnifyingglass",
-                    title: "No Results",
-                    subtitle: "No organizations match your filter"
-                )
-            } else if organizationError == nil {
+            } else if selectedOrganization == nil {
                 if isLoading {
                     HStack {
                         ProgressView()
@@ -1048,12 +1093,18 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical)
-                } else {
-                    EmptyStateView(
-                        icon: "building.2",
-                        title: "No Organizations",
-                        subtitle: "Organizations will load automatically on app start"
+                } else if organizations.isEmpty {
+                    ContentUnavailableView(
+                        "No organizations",
+                        systemImage: "building.2",
+                        description: Text("Organizations will load automatically on app start.")
                     )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                } else {
+                    Text("Pick an organization from the menu above.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -1062,7 +1113,7 @@ struct ContentView: View {
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
-    
+
     // MARK: - Applications Card
     
     private var applicationsCard: some View {
@@ -1091,43 +1142,18 @@ struct ContentView: View {
                     .cornerRadius(8)
             }
             
-            // Search Bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField("Search applications...", text: $appSearchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.never)
-                
-                if !appSearchText.isEmpty {
-                    Button(action: { appSearchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+            // Active filter pill (only when a status filter is on; search + filter live in the toolbar)
+            if let active = appFilterStatus, active != .all {
+                HStack {
+                    StatusPill(text: active.rawValue, tint: active.color, icon: active.icon)
+                    Spacer()
+                    Button("Clear", role: .destructive) {
+                        appFilterStatus = nil
                     }
+                    .font(.caption)
                 }
             }
-            .padding(.vertical, 8)
-            
-            // Status Filters
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AppStatus.allCases, id: \.self) { status in
-                        FilterChip(
-                            title: status.rawValue,
-                            icon: status.icon,
-                            color: status.color,
-                            isSelected: appFilterStatus == status
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                appFilterStatus = (appFilterStatus == status) ? nil : status
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.bottom, 8)
-            
+
             if isLoading {
                 HStack {
                     ProgressView()
@@ -1138,7 +1164,7 @@ struct ContentView: View {
                 }
                 .padding(.vertical)
             }
-            
+
             // Applications List
             if !filteredApplications.isEmpty {
                 LazyVStack(spacing: 12) {
@@ -1147,17 +1173,21 @@ struct ContentView: View {
                     }
                 }
             } else if !applications.isEmpty {
-                EmptyStateView(
-                    icon: "magnifyingglass",
-                    title: "No Results",
-                    subtitle: "No applications match your search or filters"
+                ContentUnavailableView(
+                    "No matching applications",
+                    systemImage: "magnifyingglass",
+                    description: Text("No applications match your search or filters.")
                 )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
             } else if !isLoading {
-                EmptyStateView(
-                    icon: "app",
-                    title: "No Applications",
-                    subtitle: "Load applications to view your Clever Cloud apps"
+                ContentUnavailableView(
+                    "No applications",
+                    systemImage: "app",
+                    description: Text("Applications will load automatically on app start.")
                 )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
             }
         }
         .padding()
@@ -1221,11 +1251,13 @@ struct ContentView: View {
                     }
                 }
             } else if addonError == nil {
-                EmptyStateView(
-                    icon: "puzzlepiece.extension",
-                    title: "No Add-ons",
-                    subtitle: "Test add-ons to view available services"
+                ContentUnavailableView(
+                    "No add-ons",
+                    systemImage: "puzzlepiece.extension",
+                    description: Text("Test add-ons to view available services.")
                 )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
             }
         }
         .padding()
@@ -1235,34 +1267,6 @@ struct ContentView: View {
     }
     
     // MARK: - Testing Actions Card
-
-    
-    // MARK: - Helper Components
-    
-    struct EmptyStateView: View {
-        let icon: String
-        let title: String
-        let subtitle: String
-        
-        var body: some View {
-            VStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 40))
-                    .foregroundColor(.secondary)
-                
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.vertical, 24)
-        }
-    }
-    
 
     
     struct FilterChip: View {
@@ -1516,24 +1520,7 @@ struct ContentView: View {
     }
     
     private func applicationStatusBadge(_ state: String) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(colorForState(state))
-                .frame(width: 8, height: 8)
-            
-            Text(state.capitalized)
-                .font(.caption2)
-                .fontWeight(.medium)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(colorForState(state).opacity(0.15))
-        .foregroundColor(colorForState(state))
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(colorForState(state).opacity(0.3), lineWidth: 0.5)
-        )
+        StatusPill(text: state.capitalized, tint: colorForState(state))
     }
     
     private func colorForState(_ state: String) -> Color {
