@@ -374,45 +374,32 @@ public struct CCNetworkGroupMemberCreate: Codable {
 
 // MARK: - CCNetworkGroupExternalPeerCreate
 
-/// Model for creating an external peer
+/// Model for creating an external peer. Body shape validated against the live v4 API:
+/// it expects camelCase `label` + `publicKey` (NOT `name`/`public_key`/`allowed_ips`, which produced
+/// a 400 "A form field was malformed / Missing required field"). The peer's IP is assigned by the API.
+/// Mirrors clever-tools `clever ng create external <label> <ng> <publicKey>`.
 public struct CCNetworkGroupExternalPeerCreate: Codable {
-    
-    /// Peer name
-    public let name: String
-    
-    /// Peer description
-    public let description: String?
-    
-    /// Public key for WireGuard
+
+    /// Peer name (API field `label`)
+    public let label: String
+
+    /// WireGuard public key (API field `publicKey`, camelCase)
     public let publicKey: String
-    
-    /// Allowed IPs for this peer
-    public let allowedIps: [String]
-    
-    /// Endpoint for the peer (optional)
-    public let endpoint: String?
-    
-    public init(
-        name: String,
-        description: String? = nil,
-        publicKey: String,
-        allowedIps: [String],
-        endpoint: String? = nil
-    ) {
-        self.name = name
-        self.description = description
+
+    /// Optional member to attach this external peer to (omitted when nil)
+    public let parentMember: String?
+
+    public init(label: String, publicKey: String, parentMember: String? = nil) {
+        self.label = label
         self.publicKey = publicKey
-        self.allowedIps = allowedIps
-        self.endpoint = endpoint
+        self.parentMember = parentMember
     }
-    
+
     // MARK: - CodingKeys
     enum CodingKeys: String, CodingKey {
-        case name
-        case description
-        case publicKey = "public_key"
-        case allowedIps = "allowed_ips"
-        case endpoint
+        case label
+        case publicKey
+        case parentMember
     }
 }
 

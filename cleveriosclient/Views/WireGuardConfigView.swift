@@ -200,10 +200,8 @@ struct WireGuardConfigView: View {
 
         let keys = WireGuardKey.generate()
         let request = CCNetworkGroupExternalPeerCreate(
-            name: deviceName.trimmingCharacters(in: .whitespaces),
-            publicKey: keys.publicKeyBase64,
-            // The API assigns the peer's address; allowedIps is sent empty and validated live.
-            allowedIps: []
+            label: deviceName.trimmingCharacters(in: .whitespaces),
+            publicKey: keys.publicKeyBase64
         )
 
         cleverCloudSDK.networkGroups
