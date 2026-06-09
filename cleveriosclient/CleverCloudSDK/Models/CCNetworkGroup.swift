@@ -59,9 +59,12 @@ public struct CCNetworkGroup: Codable, Identifiable, Equatable, Hashable {
         }
     }
     
-    /// Is network group operational
+    /// Is network group operational. The v4 API does not return a `status` field for network groups
+    /// (unlike applications), so a group that exists is considered active; only an explicit
+    /// non-"active" status marks it otherwise.
     public var isActive: Bool {
-        return status?.lowercased() == "active"
+        guard let status = status else { return true }
+        return status.lowercased() == "active"
     }
     
     // MARK: - CodingKeys
