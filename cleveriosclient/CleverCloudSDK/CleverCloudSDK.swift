@@ -418,14 +418,12 @@ public final class CleverCloudSDK: ObservableObject {
         for organizationId: String,
         name: String,
         description: String? = nil,
-        cidr: String? = nil,
-        region: String? = nil
+        cidr: String? = nil
     ) -> AnyPublisher<CCNetworkGroup, CCError> {
         let networkGroupCreate = CCNetworkGroupCreate(
             name: name,
             description: description,
-            cidr: cidr,
-            region: region
+            cidr: cidr
         )
 
         return networkGroups.createNetworkGroup(organizationId: organizationId, networkGroup: networkGroupCreate)
@@ -465,7 +463,7 @@ public final class CleverCloudSDK: ObservableObject {
         organizationId: String,
         networkGroupId: String,
         applicationId: String
-    ) -> AnyPublisher<CCNetworkGroupMember, CCError> {
+    ) -> AnyPublisher<Void, CCError> {
         return networkGroups.addApplicationToNetworkGroup(
             organizationId: organizationId,
             networkGroupId: networkGroupId,

@@ -273,40 +273,36 @@ public struct CCNetworkGroupPeer: Codable, Identifiable, Equatable {
 
 // MARK: - CCNetworkGroupCreate
 
-/// Model for creating a new network group
+/// Model for creating a new network group. Network groups are NOT region-scoped (the web console
+/// offers no geographic choice), so there is no `region` field — only `label`, optional description,
+/// and an optional CIDR (`networkIp`, auto-assigned when omitted).
 public struct CCNetworkGroupCreate: Codable {
-    
+
     /// Network group name
     public let name: String
-    
+
     /// Network group description
     public let description: String?
-    
+
     /// Network CIDR block (optional, auto-assigned if not provided)
     public let cidr: String?
-    
-    /// Region where to create the network group
-    public let region: String?
-    
+
     public init(
         name: String,
         description: String? = nil,
-        cidr: String? = nil,
-        region: String? = nil
+        cidr: String? = nil
     ) {
         self.name = name
         self.description = description
         self.cidr = cidr
-        self.region = region
     }
-    
+
     // MARK: - CodingKeys
     /// Map fields to match API expectations
     enum CodingKeys: String, CodingKey {
         case name = "label"
-        case description = "description"
+        case description
         case cidr = "networkIp"
-        case region = "region"
     }
 }
 
@@ -351,24 +347,28 @@ public struct CCNetworkGroupUpdate: Codable {
 
 // MARK: - CCNetworkGroupMemberCreate
 
-/// Model for adding a member to a network group
+/// Model for adding a member to a network group. Body shape matches the live API / clever-tools:
+/// `{ id, label, domainName, kind }` where kind is "APPLICATION" | "ADDON" | "EXTERNAL" and
+/// `domainName` is `<id>.m.<networkGroupId>.cc-ng.cloud`.
 public struct CCNetworkGroupMemberCreate: Codable {
-    
-    /// Member type ("application" or "addon")
-    public let type: CCNetworkGroupMemberType
-    
-    /// Resource ID (application ID or add-on ID)
-    public let resourceId: String
-    
-    public init(type: CCNetworkGroupMemberType, resourceId: String) {
-        self.type = type
-        self.resourceId = resourceId
-    }
-    
-    // MARK: - CodingKeys
-    enum CodingKeys: String, CodingKey {
-        case type
-        case resourceId = "resource_id"
+
+    /// Resource id (app/add-on id, or `external_<uuid>` for an external parent member)
+    public let id: String
+
+    /// Member label (for app/add-on members the API uses the id; for external, "Parent of …")
+    public let label: String
+
+    /// `<id>.m.<networkGroupId>.cc-ng.cloud`
+    public let domainName: String
+
+    /// "APPLICATION" | "ADDON" | "EXTERNAL"
+    public let kind: String
+
+    public init(id: String, label: String, domainName: String, kind: String) {
+        self.id = id
+        self.label = label
+        self.domainName = domainName
+        self.kind = kind
     }
 }
 
@@ -380,25 +380,30 @@ public struct CCNetworkGroupMemberCreate: Codable {
 /// Mirrors clever-tools `clever ng create external <label> <ng> <publicKey>`.
 public struct CCNetworkGroupExternalPeerCreate: Codable {
 
-    /// Peer name (API field `label`)
-    public let label: String
+    /// Peer role — currently only "CLIENT" is supported (per clever-tools).
+    public let peerRole: String
 
     /// WireGuard public key (API field `publicKey`, camelCase)
     public let publicKey: String
 
-    /// Optional member to attach this external peer to (omitted when nil)
-    public let parentMember: String?
+    /// Peer name (API field `label`)
+    public let label: String
 
-    public init(label: String, publicKey: String, parentMember: String? = nil) {
-        self.label = label
+    /// Id of the EXTERNAL parent member this peer attaches to (`external_<uuid>`).
+    public let parentMember: String
+
+    public init(peerRole: String = "CLIENT", publicKey: String, label: String, parentMember: String) {
+        self.peerRole = peerRole
         self.publicKey = publicKey
+        self.label = label
         self.parentMember = parentMember
     }
 
     // MARK: - CodingKeys
     enum CodingKeys: String, CodingKey {
-        case label
+        case peerRole
         case publicKey
+        case label
         case parentMember
     }
 }

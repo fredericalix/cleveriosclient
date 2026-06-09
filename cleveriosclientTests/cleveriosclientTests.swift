@@ -187,14 +187,36 @@ struct WireGuardTests {
 @Suite("CCNetworkGroupCreate encoding")
 struct NetworkGroupCreateEncodingTests {
 
-    @Test("Maps name->label and cidr->networkIp in the JSON body")
+    @Test("Maps name->label and cidr->networkIp in the JSON body (no region — NGs aren't geo-scoped)")
     func encodesExpectedKeys() throws {
-        let req = CCNetworkGroupCreate(name: "ng", description: "d", cidr: "10.0.0.0/16", region: "par")
+        let req = CCNetworkGroupCreate(name: "ng", description: "d", cidr: "10.0.0.0/16")
         let data = try JSONEncoder().encode(req)
         let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(obj["label"] as? String == "ng")
         #expect(obj["networkIp"] as? String == "10.0.0.0/16")
-        #expect(obj["region"] as? String == "par")
         #expect(obj["description"] as? String == "d")
+        #expect(obj["region"] == nil)
+    }
+
+    @Test("External peer body uses camelCase peerRole/publicKey/label/parentMember")
+    func externalPeerBody() throws {
+        let req = CCNetworkGroupExternalPeerCreate(publicKey: "PUB==", label: "My device", parentMember: "external_123")
+        let obj = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(req)) as? [String: Any])
+        #expect(obj["peerRole"] as? String == "CLIENT")
+        #expect(obj["publicKey"] as? String == "PUB==")
+        #expect(obj["label"] as? String == "My device")
+        #expect(obj["parentMember"] as? String == "external_123")
+        #expect(obj["public_key"] == nil) // not snake_case
+    }
+
+    @Test("Member body uses id/label/domainName/kind")
+    func memberBody() throws {
+        let domain = CCNetworkGroupService.memberDomainName(memberId: "app_x", networkGroupId: "ng_y")
+        #expect(domain == "app_x.m.ng_y.cc-ng.cloud")
+        let req = CCNetworkGroupMemberCreate(id: "app_x", label: "app_x", domainName: domain, kind: "APPLICATION")
+        let obj = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(req)) as? [String: Any])
+        #expect(obj["id"] as? String == "app_x")
+        #expect(obj["domainName"] as? String == "app_x.m.ng_y.cc-ng.cloud")
+        #expect(obj["kind"] as? String == "APPLICATION")
     }
 }

@@ -12,16 +12,12 @@ struct CreateNetworkGroupView: View {
     @State private var name = ""
     @State private var description = ""
     @State private var cidr = ""
-    @State private var region = "par"
 
     @State private var isCreating = false
     @State private var showingConfirmation = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var cancellables = Set<AnyCancellable>()
-
-    /// Common Clever Cloud regions. Validated against the live API.
-    private let regions = ["par", "rbx", "scw", "mtl", "sgp", "syd", "wsw"]
 
     private var isFormValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && organizationId != nil
@@ -42,13 +38,10 @@ struct CreateNetworkGroupView: View {
                     TextField("CIDR (optional, e.g. 10.0.0.0/16)", text: $cidr)
                         .autocorrectionDisabled(true)
                         .textInputAutocapitalization(.never)
-                    Picker("Region", selection: $region) {
-                        ForEach(regions, id: \.self) { Text($0.uppercased()).tag($0) }
-                    }
                 } header: {
                     Text("Network")
                 } footer: {
-                    Text("Leave the CIDR empty to let Clever Cloud assign one automatically.")
+                    Text("Leave the CIDR empty to let Clever Cloud assign one automatically. Network groups are not tied to a region.")
                 }
 
                 if organizationId == nil {
@@ -76,7 +69,7 @@ struct CreateNetworkGroupView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Create") { create() }
             } message: {
-                Text("Create the network group “\(name)”\(region.isEmpty ? "" : " in \(region.uppercased())")?")
+                Text("Create the network group “\(name)”?")
             }
             .alert("Creation failed", isPresented: $showingError) {
                 Button("OK", role: .cancel) {}
@@ -94,8 +87,7 @@ struct CreateNetworkGroupView: View {
         let request = CCNetworkGroupCreate(
             name: name.trimmingCharacters(in: .whitespaces),
             description: trimmedDescription.isEmpty ? nil : trimmedDescription,
-            cidr: trimmedCidr.isEmpty ? nil : trimmedCidr,
-            region: region.isEmpty ? nil : region
+            cidr: trimmedCidr.isEmpty ? nil : trimmedCidr
         )
 
         isCreating = true

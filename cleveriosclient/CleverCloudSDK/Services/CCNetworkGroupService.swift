@@ -147,11 +147,15 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     ///   - member: Member creation data
     /// - Returns: Publisher emitting added member or error
-    public func addNetworkGroupMember(organizationId: String, networkGroupId: String, member: CCNetworkGroupMemberCreate) -> AnyPublisher<CCNetworkGroupMember, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
-        return httpClient.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", body: member, apiVersion: .v4)
+    public func addNetworkGroupMember(organizationId: String, networkGroupId: String, member: CCNetworkGroupMemberCreate) -> AnyPublisher<Void, CCError> {
+        // The members endpoint returns an empty/202 body, so use the raw path (any 2xx = success)
+        // rather than trying to decode a member object.
+        return httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", body: member, apiVersion: .v4)
+    }
+
+    /// `<memberId>.m.<networkGroupId>.cc-ng.cloud` — the member domain name the API expects.
+    static func memberDomainName(memberId: String, networkGroupId: String) -> String {
+        "\(memberId).m.\(networkGroupId).cc-ng.cloud"
     }
     
     /// Remove a member from a network group
@@ -278,12 +282,53 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     ///   - applicationId: Application ID to add
     /// - Returns: Publisher emitting added member or error
-    public func addApplicationToNetworkGroup(organizationId: String, networkGroupId: String, applicationId: String) -> AnyPublisher<CCNetworkGroupMember, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
-        let member = CCNetworkGroupMemberCreate(type: .application, resourceId: applicationId)
+    public func addApplicationToNetworkGroup(organizationId: String, networkGroupId: String, applicationId: String) -> AnyPublisher<Void, CCError> {
+        let member = CCNetworkGroupMemberCreate(
+            id: applicationId,
+            label: applicationId,
+            domainName: Self.memberDomainName(memberId: applicationId, networkGroupId: networkGroupId),
+            kind: "APPLICATION"
+        )
         return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: member)
+    }
+
+    /// Create an external WireGuard peer (e.g. a laptop/phone). Two-step, mirroring clever-tools:
+    /// (1) create an EXTERNAL parent member, (2) create the peer with `peerRole=CLIENT` + that parent.
+    /// The external-peers POST returns no usable body, so we re-fetch the peers and match on publicKey.
+    public func createExternalPeer(organizationId: String, networkGroupId: String, publicKey: String, label: String) -> AnyPublisher<CCNetworkGroupPeer, CCError> {
+        let parentId = "external_\(UUID().uuidString)"
+        let parentMember = CCNetworkGroupMemberCreate(
+            id: parentId,
+            label: "Parent of \(label)",
+            domainName: Self.memberDomainName(memberId: parentId, networkGroupId: networkGroupId),
+            kind: "EXTERNAL"
+        )
+        let peerBody = CCNetworkGroupExternalPeerCreate(publicKey: publicKey, label: label, parentMember: parentId)
+        let client = httpClient
+
+        return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: parentMember)
+            .flatMap { _ -> AnyPublisher<Void, CCError> in
+                client.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+            }
+            .flatMap { [weak self] _ -> AnyPublisher<[CCNetworkGroupPeer], CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                // Small delay so the freshly-created peer shows up in the list.
+                return Just(())
+                    .delay(for: .milliseconds(800), scheduler: DispatchQueue.main)
+                    .setFailureType(to: CCError.self)
+                    .flatMap { _ in self.getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId) }
+                    .eraseToAnyPublisher()
+            }
+            .tryMap { peers -> CCNetworkGroupPeer in
+                guard let peer = peers.first(where: { $0.publicKey == publicKey }) else {
+                    throw CCError.invalidParameters("External peer created but not found in the peers list")
+                }
+                return peer
+            }
+            .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
+            .eraseToAnyPublisher()
     }
     
     /// Add an add-on to a network group
@@ -292,8 +337,13 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     ///   - addonId: Add-on ID to add
     /// - Returns: Publisher emitting added member or error
-    public func addAddonToNetworkGroup(organizationId: String, networkGroupId: String, addonId: String) -> AnyPublisher<CCNetworkGroupMember, CCError> {
-        let member = CCNetworkGroupMemberCreate(type: .addon, resourceId: addonId)
+    public func addAddonToNetworkGroup(organizationId: String, networkGroupId: String, addonId: String) -> AnyPublisher<Void, CCError> {
+        let member = CCNetworkGroupMemberCreate(
+            id: addonId,
+            label: addonId,
+            domainName: Self.memberDomainName(memberId: addonId, networkGroupId: networkGroupId),
+            kind: "ADDON"
+        )
         return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: member)
     }
     

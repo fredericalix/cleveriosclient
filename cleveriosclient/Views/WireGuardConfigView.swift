@@ -199,13 +199,14 @@ struct WireGuardConfigView: View {
         errorMessage = nil
 
         let keys = WireGuardKey.generate()
-        let request = CCNetworkGroupExternalPeerCreate(
-            label: deviceName.trimmingCharacters(in: .whitespaces),
-            publicKey: keys.publicKeyBase64
-        )
 
         cleverCloudSDK.networkGroups
-            .addNetworkGroupExternalPeer(organizationId: orgId, networkGroupId: networkGroupId, externalPeer: request)
+            .createExternalPeer(
+                organizationId: orgId,
+                networkGroupId: networkGroupId,
+                publicKey: keys.publicKeyBase64,
+                label: deviceName.trimmingCharacters(in: .whitespaces)
+            )
             .flatMap { peer -> AnyPublisher<String, CCError> in
                 cleverCloudSDK.networkGroups.getWireGuardConfigurationText(
                     organizationId: orgId,
