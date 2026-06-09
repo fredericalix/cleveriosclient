@@ -339,7 +339,8 @@ public class CCNetworkGroupService {
         return getCompleteNetworkGroupData(organizationId: organizationId, networkGroupId: networkGroupId)
             .map { (networkGroup, members, peers) in
                 let connectedMembers = members.filter { $0.status?.lowercased() == "connected" }.count
-                let activePeers = peers.filter { $0.status?.lowercased() == "connected" }.count
+                // Peers returned by the API are active; there is no per-peer status field.
+                let activePeers = peers.count
                 
                 return CCNetworkGroupStats(
                     connectedMembers: connectedMembers,

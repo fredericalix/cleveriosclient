@@ -246,7 +246,8 @@ struct NetworkGroupDetailView: View {
             Image(systemName: peer.isExternal ? "globe" : "house").foregroundColor(peer.isExternal ? .blue : .green)
             VStack(alignment: .leading, spacing: 2) {
                 Text(peer.name).font(.subheadline).fontWeight(.medium)
-                Text(peer.type.capitalized).font(.caption).foregroundColor(.secondary)
+                Text(peer.isExternal ? "External peer" : (peer.parentMember.map { "Linked to \($0)" } ?? "Internal peer"))
+                    .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
             if peer.isExternal {

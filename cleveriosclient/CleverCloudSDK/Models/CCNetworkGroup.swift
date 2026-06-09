@@ -201,74 +201,73 @@ public enum CCNetworkGroupMemberType: String, Codable, CaseIterable {
 
 // MARK: - CCNetworkGroupPeer
 
-/// Represents an external peer in a network group
+/// Represents a peer in a network group. Shape validated against the live v4 API, e.g.:
+/// `{"id":"…","label":"Spoiled camerupt","publicKey":"…","endpoint":{…},"hostname":"…",
+///   "parentMember":"postgresql_…","type":"CleverPeer"}`
+/// `CleverPeer` peers are created automatically for members (apps/add-ons); external peers carry an
+/// "external"-flavored type. Decoding is tolerant so unexpected/missing fields never crash the list.
 public struct CCNetworkGroupPeer: Codable, Identifiable, Equatable {
-    
+
     /// Unique peer identifier
     public let id: String
-    
-    /// Peer name
+
+    /// Peer name (API field `label`)
     public let name: String
-    
-    /// Peer description
-    public let description: String?
-    
-    /// Peer type ("external" or "internal")
+
+    /// Peer type, e.g. "CleverPeer" / "ExternalPeer"
     public let type: String
-    
-    /// Public key for WireGuard
+
+    /// WireGuard public key (API field `publicKey`)
     public let publicKey: String?
-    
-    /// Allowed IPs for this peer
-    public let allowedIps: [String]?
-    
-    /// Endpoint for external peers
-    public let endpoint: String?
-    
-    /// Creation timestamp
-    public let createdAt: Date?
-    
-    /// Peer status
-    public let status: String?
-    
+
+    /// For CleverPeers, the member (app/add-on id) this peer was created for
+    public let parentMember: String?
+
+    /// Internal hostname
+    public let hostname: String?
+
     // MARK: - Computed Properties
-    
+
+    /// Is this an external (user-added) peer rather than an auto-created member peer
+    public var isExternal: Bool {
+        return type.lowercased().contains("external")
+    }
+
     /// Display name with type indicator
     public var displayNameWithType: String {
-        let typeIcon = type == "external" ? "🌐" : "🏠"
-        return "\(typeIcon) \(name)"
+        return "\(isExternal ? "🌐" : "🏠") \(name)"
     }
-    
-    /// Is external peer
-    public var isExternal: Bool {
-        return type == "external"
-    }
-    
-    /// Status color for UI
-    public var statusColor: String {
-        switch status?.lowercased() {
-        case "connected":
-            return "systemGreen"
-        case "connecting":
-            return "systemOrange"
-        case "disconnected", "error":
-            return "systemRed"
-        default:
-            return "systemGray"
-        }
-    }
-    
+
     // MARK: - CodingKeys
     enum CodingKeys: String, CodingKey {
         case id
-        case name
-        case description
+        case name = "label"
         case type
-        case publicKey = "public_key"
-        case allowedIps = "allowed_ips"
-        case endpoint
-        case createdAt = "created_at"
-        case status
+        case publicKey
+        case parentMember
+        case hostname
+    }
+
+    /// Tolerant decoding: only `id` is required; everything else falls back so a payload-shape change
+    /// (or the nested `endpoint` object, which is intentionally not decoded) can't break the peers list.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.name = (try? c.decode(String.self, forKey: .name)) ?? "Peer"
+        self.type = (try? c.decode(String.self, forKey: .type)) ?? "peer"
+        self.publicKey = try? c.decode(String.self, forKey: .publicKey)
+        self.parentMember = try? c.decode(String.self, forKey: .parentMember)
+        self.hostname = try? c.decode(String.self, forKey: .hostname)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(type, forKey: .type)
+        try c.encodeIfPresent(publicKey, forKey: .publicKey)
+        try c.encodeIfPresent(parentMember, forKey: .parentMember)
+        try c.encodeIfPresent(hostname, forKey: .hostname)
     }
 }
 
