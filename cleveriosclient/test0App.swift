@@ -49,6 +49,16 @@ struct test0App: App {
 
 extension Notification.Name {
     static let appRefreshRequested = Notification.Name("appRefreshRequested")
+    /// Refresh a single application's data; `object` carries the application id.
+    static let refreshApplicationData = Notification.Name("RefreshApplicationData")
+    /// Refresh the whole application list (e.g. after a deletion).
+    static let refreshApplicationList = Notification.Name("RefreshApplicationList")
+    /// An application's computed status changed; `object` carries the application id.
+    static let applicationStateChanged = Notification.Name("ApplicationStateChanged")
+    /// An application was destroyed; `object` carries the application id.
+    static let applicationDestroyed = Notification.Name("ApplicationDestroyed")
+    /// An add-on was destroyed; `object` carries the add-on id.
+    static let addonDestroyed = Notification.Name("AddonDestroyed")
 }
 
 /// Vue racine de l'application

@@ -8,13 +8,29 @@ public final class CCOAuthSigner: @unchecked Sendable {
     
     /// SDK configuration with OAuth tokens
     private let configuration: CCConfiguration
-    
+
+    /// OAuth nonce/timestamp generators. Injectable so tests can pin a deterministic signature;
+    /// the defaults reproduce the exact production behavior.
+    private let nonceProvider: () -> String
+    private let timestampProvider: () -> String
+
     // MARK: - Initialization
-    
+
     /// Initialize OAuth signer with configuration
-    /// - Parameter configuration: SDK configuration containing OAuth tokens
-    public init(configuration: CCConfiguration) {
+    /// - Parameters:
+    ///   - configuration: SDK configuration containing OAuth tokens
+    ///   - nonceProvider: test seam for a fixed nonce (default: random 32-char hex)
+    ///   - timestampProvider: test seam for a fixed timestamp (default: current unix time)
+    public init(configuration: CCConfiguration,
+                nonceProvider: (() -> String)? = nil,
+                timestampProvider: (() -> String)? = nil) {
         self.configuration = configuration
+        self.nonceProvider = nonceProvider ?? {
+            String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(32))
+        }
+        self.timestampProvider = timestampProvider ?? {
+            String(Int(Date().timeIntervalSince1970))
+        }
     }
     
     // MARK: - OAuth Request Signing
@@ -75,9 +91,9 @@ public final class CCOAuthSigner: @unchecked Sendable {
         parameters: [String: String] = [:]
     ) -> String {
         
-        // Generate OAuth parameters
-        let timestamp = String(Int(Date().timeIntervalSince1970))
-        let nonce = generateNonce()
+        // Generate OAuth parameters (injectable for deterministic tests)
+        let timestamp = timestampProvider()
+        let nonce = nonceProvider()
         
         // Create OAuth parameters
         var oauthParams: [String: String] = [
@@ -116,45 +132,39 @@ public final class CCOAuthSigner: @unchecked Sendable {
         return buildAuthorizationHeader(oauthParams: oauthParams)
     }
     
-    // MARK: - Private Methods
-    
-    /// Generate random nonce
-    private func generateNonce() -> String {
-        let uuid = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        return String(uuid.prefix(32))
-    }
-    
-    /// Create OAuth signature base string
-    private func createSignatureBaseString(
+    // MARK: - Internal (test seams)
+
+    /// Create OAuth signature base string. `internal` so tests can pin it against a known vector.
+    func createSignatureBaseString(
         httpMethod: String,
         requestURL: URL,
         parameters: [String: String]
     ) -> String {
-        
+
         // Sort parameters by key
         let sortedParams = parameters.sorted { $0.key < $1.key }
-        
+
         // Create parameter string
         let parameterString = sortedParams
             .map { "\($0.key.oauthPercentEncoded())=\($0.value.oauthPercentEncoded())" }
             .joined(separator: "&")
-        
-        // Get base URL (without query parameters)
-        // CRITICAL: Use the encoded path as it will be sent in the actual HTTP request
-        // requestURL.path automatically decodes the path, but we need the encoded version
-        // Extract the path from the absoluteString to preserve encoding
+
+        // Get base URL (without query parameters).
+        // CRITICAL: use the ENCODED path as actually sent in the HTTP request — requestURL.path
+        // auto-decodes, so we slice it out of absoluteString to preserve encoding.
         let absoluteString = requestURL.absoluteString
         let baseURL: String
-        if let hostEndIndex = absoluteString.range(of: requestURL.host!)?.upperBound {
+        if let host = requestURL.host, let scheme = requestURL.scheme,
+           let hostEndIndex = absoluteString.range(of: host)?.upperBound {
             let pathWithQuery = String(absoluteString[hostEndIndex...])
             let path = pathWithQuery.components(separatedBy: "?").first ?? pathWithQuery
-            baseURL = "\(requestURL.scheme!)://\(requestURL.host!)\(path)"
+            baseURL = "\(scheme)://\(host)\(path)"
         } else {
-            // Fallback to original behavior if parsing fails
-            let path = requestURL.path
-            baseURL = "\(requestURL.scheme!)://\(requestURL.host!)\(path)"
+            // Defensive fallback (URLs originate from our own buildURL, so host/scheme are normally
+            // present). Strip any query and sign the remaining absolute string.
+            baseURL = absoluteString.components(separatedBy: "?").first ?? absoluteString
         }
-        
+
         // Create signature base string
         let baseString = [
             httpMethod.uppercased(),
@@ -174,8 +184,8 @@ public final class CCOAuthSigner: @unchecked Sendable {
         return "\(consumerSecret)&\(tokenSecret)"
     }
     
-    /// Generate HMAC-SHA512 signature
-    private func generateHMACSHA512Signature(
+    /// Generate HMAC-SHA512 signature. `internal` so tests can pin it against a precomputed value.
+    func generateHMACSHA512Signature(
         baseString: String,
         signingKey: String
     ) -> String {

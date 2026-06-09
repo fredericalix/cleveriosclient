@@ -164,9 +164,10 @@ extension CCKeychainManager {
         let hasStoredCredentials = hasStoredCredentials
         
         if let credentials = loadCredentials() {
+            // Log only presence and lengths — never any portion of the token or secret.
             debugLog("🔍 🔐 KEYCHAIN STATUS:")
-            debugLog("🔍    CLI Token: \(credentials.token.prefix(10))...")
-            debugLog("🔍    Token Secret: \(credentials.secret.prefix(10))...")
+            debugLog("🔍    CLI Token: present (length=\(credentials.token.count))")
+            debugLog("🔍    Token Secret: present (length=\(credentials.secret.count))")
             debugLog("🔍    Has Valid Credentials: \(hasStoredCredentials)")
         } else {
             debugLog("🔍 🔐 KEYCHAIN STATUS: No credentials stored")

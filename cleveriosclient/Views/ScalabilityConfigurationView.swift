@@ -554,13 +554,13 @@ struct ScalabilityConfigurationView: View {
             await MainActor.run {
                 // Send multiple refresh notifications to ensure UI updates
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("RefreshApplicationData"),
+                    name: .refreshApplicationData,
                     object: application.id
                 )
                 
                 // Also send global refresh to update application list
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("RefreshApplicationList"),
+                    name: .refreshApplicationList,
                     object: nil
                 )
                 
@@ -573,7 +573,7 @@ struct ScalabilityConfigurationView: View {
             await MainActor.run {
                 // Send another round of refresh notifications
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("RefreshApplicationData"),
+                    name: .refreshApplicationData,
                     object: application.id
                 )
                 

@@ -127,16 +127,11 @@ public final class CCHTTPClient: ObservableObject {
         _ endpoint: String,
         apiVersion: APIVersion = .v2
     ) -> AnyPublisher<Void, CCError> {
-        return request(method: .DELETE, endpoint: endpoint, body: nil as String?, apiVersion: apiVersion)
-            .map { (_: EmptyResponse) in () }
-            .catch { error -> AnyPublisher<Void, CCError> in
-                // If decoding fails, assume success for empty response
-                if case .parsingError = error {
-                    return Just(()).setFailureType(to: CCError.self).eraseToAnyPublisher()
-                } else {
-                    return Fail(error: error).eraseToAnyPublisher()
-                }
-            }
+        // Use the raw path: any 2xx is success regardless of body, and real HTTP errors (401/404/…)
+        // still propagate. The old approach decoded EmptyResponse and swallowed ALL .parsingError,
+        // which would also mask a 2xx carrying an unexpected (non-empty) body.
+        return requestRaw(method: .DELETE, endpoint: endpoint, apiVersion: apiVersion)
+            .map { _ in () }
             .eraseToAnyPublisher()
     }
     
@@ -151,16 +146,10 @@ public final class CCHTTPClient: ObservableObject {
         body: T,
         apiVersion: APIVersion = .v2
     ) -> AnyPublisher<Void, CCError> {
-        return request(method: .POST, endpoint: endpoint, body: body, apiVersion: apiVersion)
-            .map { (_: EmptyResponse) in () }
-            .catch { error -> AnyPublisher<Void, CCError> in
-                // If decoding fails, assume success for empty response
-                if case .parsingError = error {
-                    return Just(()).setFailureType(to: CCError.self).eraseToAnyPublisher()
-                } else {
-                    return Fail(error: error).eraseToAnyPublisher()
-                }
-            }
+        // See deleteRaw: raw path treats any 2xx as success and propagates real HTTP errors, instead
+        // of decoding EmptyResponse and swallowing every .parsingError.
+        return requestRawWithBody(method: .POST, endpoint: endpoint, body: body, apiVersion: apiVersion)
+            .map { _ in () }
             .eraseToAnyPublisher()
     }
     
@@ -370,9 +359,8 @@ public final class CCHTTPClient: ObservableObject {
                 // Log response details (missing from original requestRawWithBody implementation)
                 debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown"), headers=\(httpResponse.allHeaderFields.description)]")
                 
-                // Log raw response data
-                let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode as UTF-8"
-                debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(rawResponse.prefix(500))]")
+                // Log raw response data (secrets redacted)
+                debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(redactedBodyPreview(data))]")
                 
                 switch httpResponse.statusCode {
                 case 200...299:
@@ -506,8 +494,7 @@ public final class CCHTTPClient: ObservableObject {
                 switch httpResponse.statusCode {
                 case 200...299:
                     // Success - decode response
-                    let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode as UTF-8"
-                    debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(rawResponse.prefix(500))]")
+                    debugLog("🔍 📦 Raw response data [size=\(data.count) bytes, preview=\(redactedBodyPreview(data))]")
 
                     do {
                         let decoder = JSONDecoder()
@@ -515,7 +502,7 @@ public final class CCHTTPClient: ObservableObject {
                         let decodedResponse = try decoder.decode(T.self, from: data)
                         return decodedResponse
                     } catch {
-                        debugLog("❌ ❌ JSON Decoding Error [error=\(error.localizedDescription), type=\(T.self), rawData=\(rawResponse), decodingError=\(error)]")
+                        debugLog("❌ ❌ JSON Decoding Error [error=\(error.localizedDescription), type=\(T.self), size=\(data.count) bytes, rawData=\(redactedBodyPreview(data)), decodingError=\(error)]")
                         throw CCError.parsingError(error)
                     }
                     
@@ -979,6 +966,36 @@ public enum HTTPMethod: String {
 public enum APIVersion {
     case v2
     case v4
+}
+
+// MARK: - Log redaction
+
+/// Best-effort masking of secrets before a response/request body is logged, so that flipping
+/// `kForceConsoleLogs` for a diagnostic build can't dump credentials (OAuth tokens, add-on
+/// connection strings in env vars, etc.). Only ever runs behind `debugLog` (no-op in Release).
+fileprivate func redactSecretsForLog(_ text: String) -> String {
+    var result = text
+    // 1. Mask the value of any JSON key whose name looks sensitive: "...token...": "value" -> "***".
+    let sensitiveKey = "(\"[^\"]*(?:token|secret|password|passwd|authorization|api[_-]?key|access[_-]?key|private[_-]?key)[^\"]*\"\\s*:\\s*\")[^\"]*(\")"
+    result = result.replacingOccurrences(
+        of: sensitiveKey,
+        with: "$1***$2",
+        options: [.regularExpression, .caseInsensitive]
+    )
+    // 2. Mask credentials embedded in connection-string URIs: scheme://user:pass@host -> scheme://***:***@host.
+    let uriCreds = "([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@:\\s\"]+:[^/@\\s\"]+@"
+    result = result.replacingOccurrences(
+        of: uriCreds,
+        with: "$1***:***@",
+        options: [.regularExpression]
+    )
+    return result
+}
+
+/// Redacted, size-capped preview of a body for logging.
+fileprivate func redactedBodyPreview(_ data: Data, limit: Int = 500) -> String {
+    guard let text = String(data: data, encoding: .utf8) else { return "<\(data.count) bytes, non-UTF8>" }
+    return String(redactSecretsForLog(text).prefix(limit))
 }
 
  

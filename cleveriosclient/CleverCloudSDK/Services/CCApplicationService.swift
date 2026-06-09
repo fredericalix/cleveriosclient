@@ -163,12 +163,10 @@ public class CCApplicationService: ObservableObject {
     ///   - organizationId: Optional organization ID (nil for user applications)
     /// - Returns: Publisher with array of environment variables
     public func getEnvironmentVariables(applicationId: String, organizationId: String? = nil) -> AnyPublisher<[CCEnvironmentVariable], CCError> {
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/env"
-        }
+        // Route through buildApplicationEndpoint so a non-"orga_" id (e.g. a personal-space "user_"
+        // id) collapses to /self consistently — branching on `if let orgId` alone would wrongly build
+        // /organisations/user_xxx/... and 404/403.
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId, path: "/env")
         return httpClient.get(endpoint, apiVersion: .v2)
     }
     
@@ -182,12 +180,7 @@ public class CCApplicationService: ObservableObject {
         variables: [CCEnvironmentVariable],
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/env"
-        }
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId, path: "/env")
         return httpClient.put(endpoint, body: variables, apiVersion: .v2)
     }
     
@@ -201,12 +194,7 @@ public class CCApplicationService: ObservableObject {
         variable: CCEnvironmentVariable,
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env/\(variable.name)"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/env/\(variable.name)"
-        }
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId, path: "/env/\(variable.name)")
         return httpClient.put(endpoint, body: variable, apiVersion: .v2)
     }
     
@@ -220,12 +208,7 @@ public class CCApplicationService: ObservableObject {
         name: String,
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/env/\(name)"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/env/\(name)"
-        }
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId, path: "/env/\(name)")
         return httpClient.delete(endpoint, apiVersion: .v2)
     }
     

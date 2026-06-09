@@ -113,11 +113,9 @@ final class CCOAuthService: NSObject {
         // 1. Générer un CLI token aléatoire (comme clever-tools)
         let cliToken = generateRandomCLIToken()
         self.cliToken = cliToken
-        
-        if configuration.enableDebugLogging {
-            debugLog("🔐 Generated CLI token: \(cliToken)")
-        }
-        
+
+        // Never log the full CLI token — it is the bearer secret of the whole login handshake; anyone
+        // who reads it during the polling window can claim the freshly-minted OAuth credentials.
         debugLog("🔍 🔑 Generated CLI token [tokenLength=\(cliToken.count), tokenPrefix=\(String(cliToken.prefix(10)) + "...")]")
         
         // 2. Construire l'URL de la console (comme clever-tools)
@@ -188,9 +186,12 @@ final class CCOAuthService: NSObject {
         safariVC.preferredBarTintColor = .systemBackground
         safariVC.preferredControlTintColor = UIColor(red: 165/255.0, green: 16/255.0, blue: 80/255.0, alpha: 1.0) // Clever Cloud primary color
         
-        // Obtenir la window root view controller
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
+        // Obtenir la window root view controller — préférer la scène active au premier plan et sa
+        // key window (plus robuste que `.first` sur iPad multi-fenêtre / Designed-for-iPad sur Mac).
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = windowScenes.first { $0.activationState == .foregroundActive } ?? windowScenes.first
+        let targetWindow = activeScene?.windows.first(where: { $0.isKeyWindow }) ?? activeScene?.windows.first
+        if let window = targetWindow,
            let rootViewController = window.rootViewController {
             
             // Présenter Safari

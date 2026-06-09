@@ -174,9 +174,10 @@ struct ApplicationLogsView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                     }
+                    .accessibilityLabel("Clear search")
                 }
             }
-            
+
             // Controls row
             HStack {
                 // Log level filter
@@ -210,6 +211,7 @@ struct ApplicationLogsView: View {
                 Toggle("", isOn: $autoScroll)
                     .labelsHidden()
                     .toggleStyle(AutoScrollToggleStyle())
+                    .accessibilityLabel("Auto-scroll logs")
                 
                 // Pause/Resume button
                 Button(action: togglePause) {
@@ -234,6 +236,7 @@ struct ApplicationLogsView: View {
                         .cornerRadius(8)
                 }
                 .disabled(logs.isEmpty)
+                .accessibilityLabel("Clear logs")
             }
         }
         .padding()

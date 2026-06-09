@@ -104,7 +104,7 @@ final class AppState {
         isLoading = true
 
         let publisher: AnyPublisher<[CCApplication], CCError>
-        if org.id.hasPrefix("orga_") {
+        if org.isOrganization {
             publisher = cleverCloudSDK.applications.getApplicationsWithStates(forOrganization: org.id)
         } else {
             publisher = cleverCloudSDK.applications.getApplicationsWithStates()
@@ -131,7 +131,7 @@ final class AppState {
         addonError = nil
 
         let publisher: AnyPublisher<[CCAddon], CCError>
-        if org.id.hasPrefix("orga_") {
+        if org.isOrganization {
             publisher = cleverCloudSDK.getOrganizationAddons(organizationId: org.id)
         } else {
             publisher = cleverCloudSDK.getUserAddons()
@@ -301,7 +301,7 @@ final class AppState {
         for (index, app) in apps.enumerated() {
             let appId = app.id
             let instancesPublisher: AnyPublisher<[CCApplicationInstance], CCError>
-            if let orgId = requestOrgId, orgId.hasPrefix("orga_") {
+            if let orgId = requestOrgId, CCOrganization.isOrganizationId(orgId) {
                 instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId, organizationId: orgId)
             } else {
                 instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId)
@@ -326,7 +326,7 @@ final class AppState {
                         guard let self else { return }
                         let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
                         guard liveOrgId == requestOrgId else { return }
-                        self.applicationStatuses[appId] = Self.computeApplicationStatus(from: instances)
+                        self.applicationStatuses[appId] = ApplicationStatus.compute(from: instances).description
                     }
                 )
                 .store(in: &statusRequestCancellables)
@@ -356,10 +356,15 @@ final class AppState {
         guard event.type == "DEPLOYMENT_ACTION_BEGIN" || event.type == "DEPLOYMENT_ACTION_END" else {
             return
         }
-        let appId = (event.data["id"] as? String) ?? (event.data["appId"] as? String)
-        guard let appId, !appId.isEmpty else { return }
+        guard let appId = event.appId, !appId.isEmpty else { return }
 
-        let state = (event.data["state"] as? String)?.uppercased() ?? ""
+        // Org guard: only apply events for apps in the currently displayed (org-scoped) list, so an
+        // event for another org — or a stale org right after cancelInFlight() — cannot pollute
+        // applicationStatuses and inflate the dashboard counts. Mirrors the polled path's org guard.
+        let currentApps = applicationsProvider?() ?? applications
+        guard currentApps.contains(where: { $0.id == appId }) else { return }
+
+        let state = event.state?.uppercased() ?? ""
         let mapped: String
         switch state {
         case "WIP": mapped = "Deploying"
@@ -367,22 +372,12 @@ final class AppState {
         case "FAIL": mapped = "Failed"
         case "CANCELLED": mapped = "Stopped"
         default:
-            // Unknown state → trigger a real refresh for that app instead of trusting the event.
-            refreshApplicationStatuses(forced: true)
+            // Unknown state → refresh only the affected app instead of trusting the event or
+            // fanning out to every app.
+            loadApplicationStatuses(for: currentApps.filter { $0.id == appId })
             return
         }
         debugLog("ℹ️ 📨 Event \(event.type) \(state) → \(appId) = \(mapped)")
         applicationStatuses[appId] = mapped
-    }
-
-    /// Compute application status from instances (follows clever-tools computeStatus pattern)
-    private static func computeApplicationStatus(from instances: [CCApplicationInstance]) -> String {
-        guard !instances.isEmpty else { return "Stopped" }
-        let states = instances.map { $0.state.uppercased() }
-        if states.contains("FAILED") { return "Failed" }
-        if states.contains("DEPLOYING") { return "Deploying" }
-        if states.contains("UP") { return "Running" }
-        if states.contains("DOWN") || states.contains("SHOULD_BE_DOWN") { return "Stopped" }
-        return "Unknown"
     }
 }

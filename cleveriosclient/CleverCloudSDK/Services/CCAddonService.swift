@@ -20,12 +20,11 @@ public class CCAddonService: ObservableObject {
     /// - Returns: Publisher with array of CCAddon objects
     public func getUserAddons() -> AnyPublisher<[CCAddon], CCError> {
         debugLog("🚀 CCAddonService.getUserAddons() called")
-        // Try personal space first, then fallback to user addons
+        // The previous `.catch` retried the IDENTICAL "/self/addons" endpoint — a no-op disguised as a
+        // fallback. Use `.retry(1)` instead to absorb a single transient failure (matches the status-
+        // polling path's retry policy).
         return httpClient.get("/self/addons", apiVersion: .v2)
-            .catch { error -> AnyPublisher<[CCAddon], CCError> in
-                debugLog("⚠️ /self/addons failed, trying profile space...")
-                return self.httpClient.get("/self/addons", apiVersion: .v2)
-            }
+            .retry(1)
             .eraseToAnyPublisher()
     }
     

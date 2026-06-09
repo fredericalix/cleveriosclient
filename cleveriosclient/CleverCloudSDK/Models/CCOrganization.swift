@@ -38,7 +38,13 @@ public struct CCOrganization: Codable, Identifiable, Hashable {
     
     /// Returns true if this is an organization (orga ID)
     public var isOrganization: Bool {
-        return id.hasPrefix("orga_")
+        return Self.isOrganizationId(id)
+    }
+
+    /// Single source of truth for the org-vs-personal-space distinction used to pick API endpoints
+    /// (`/organisations/{id}/…` vs `/self/…`). A nil or non-"orga_" id means personal space.
+    public static func isOrganizationId(_ id: String?) -> Bool {
+        id?.hasPrefix("orga_") ?? false
     }
     
     /// Returns the organization type for display

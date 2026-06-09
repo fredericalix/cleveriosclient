@@ -1,5 +1,5 @@
 import Testing
-@testable import cleveriosclient
+@testable import mycleverclient
 
 /// Unit tests for CCScalabilityService to verify clever-tools compatibility
 @Suite("CCScalabilityService Tests")

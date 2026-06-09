@@ -232,24 +232,19 @@ public enum ApplicationStatus: String, CaseIterable {
         }
     }
     
-    /// Compute application status from instances
+    /// Compute application status from instances — the single source of truth for status precedence
+    /// (follows the clever-tools `computeStatus` pattern). Used by AppState and ApplicationDetailView.
+    ///
+    /// Precedence: any UP instance means the app is serving traffic, so UP wins even during a rolling
+    /// deploy where a sibling instance is briefly FAILED/DEPLOYING.
     public static func compute(from instances: [CCApplicationInstance]) -> ApplicationStatus {
-        // Parse string states to enum
-        let upInstances = instances.filter { $0.state.uppercased() == "UP" }
-        let deployingInstances = instances.filter { $0.state.uppercased() == "DEPLOYING" }
-        let failedInstances = instances.filter { $0.state.uppercased() == "FAILED" }
-        
-        if !upInstances.isEmpty {
-            return .running
-        } else if !deployingInstances.isEmpty {
-            return .deploying
-        } else if !failedInstances.isEmpty {
-            return .failed
-        } else if instances.isEmpty {
-            return .stopped
-        } else {
-            return .unknown
-        }
+        guard !instances.isEmpty else { return .stopped }
+        let states = Set(instances.map { $0.state.uppercased() })
+        if states.contains("UP") { return .running }
+        if states.contains("DEPLOYING") { return .deploying }
+        if states.contains("FAILED") { return .failed }
+        if states.contains("DOWN") || states.contains("SHOULD_BE_DOWN") { return .stopped }
+        return .unknown
     }
 }
 

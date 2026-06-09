@@ -259,7 +259,9 @@ public class CCEnvironmentService {
         return httpClient.get(getAppEndpoint, apiVersion: .v2)
             .flatMap { [weak self] (currentApp: CCApplication) -> AnyPublisher<CCConfigurationUpdateResponse, CCError> in
                 guard let self = self else {
-                    return Fail(error: CCError.unknown("Service deallocated" as! Error))
+                    // Was `CCError.unknown("Service deallocated" as! Error)` — force-casting a String
+                    // to Error always crashes. Mirror CCAddonService's handling of the same situation.
+                    return Fail(error: CCError.invalidParameters("Service deallocated"))
                         .eraseToAnyPublisher()
                 }
                 

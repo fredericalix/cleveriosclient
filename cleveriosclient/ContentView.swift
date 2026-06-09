@@ -129,13 +129,13 @@ struct ContentView: View {
     var filteredOrganizations: [CCOrganization] {
         switch orgFilterMode {
         case .all:
-            return organizations
+            return organizations.sortedForDisplay()
         case .favorites:
-            return organizations.filter { favoriteOrgIds.contains($0.id) }
+            return organizations.filter { favoriteOrgIds.contains($0.id) }.sortedForDisplay()
         case .personal:
-            return organizations.filter { $0.isPersonalSpace }
+            return organizations.filter { $0.isPersonalSpace }.sortedForDisplay()
         case .teams:
-            return organizations.filter { $0.isOrganization }
+            return organizations.filter { $0.isOrganization }.sortedForDisplay()
         }
     }
     
@@ -165,11 +165,11 @@ struct ContentView: View {
             }
         }
         
-                return filtered
+                return filtered.sortedByName()
     }
-    
+
     var filteredAddons: [CCAddon] {
-        return addons // For now, no filtering on add-ons
+        return addons.sortedByName() // Alphabetical by default; no other filtering on add-ons yet
     }
 
     var body: some View {
@@ -209,7 +209,7 @@ struct ContentView: View {
             startAppStatePolling()
             loadFavorites()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ApplicationDestroyed"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { notification in
             // Handle application destruction
             if let destroyedAppId = notification.object as? String {
                 // Remove from applications list
@@ -222,7 +222,7 @@ struct ContentView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AddonDestroyed"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { notification in
             // Handle addon destruction
             if let destroyedAddonId = notification.object as? String {
                 // Remove from addons list
@@ -327,14 +327,14 @@ struct ContentView: View {
             startAppStatePolling()
             loadFavorites()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ApplicationDestroyed"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { notification in
             // Handle application destruction
             if let destroyedAppId = notification.object as? String {
                 // Remove from applications list
                 applications.removeAll { $0.id == destroyedAppId }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AddonDestroyed"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { notification in
             // Handle addon destruction
             if let destroyedAddonId = notification.object as? String {
                 // Remove from addons list
@@ -910,7 +910,7 @@ struct ContentView: View {
 
     private var organizationPickerMenu: some View {
         Menu {
-            ForEach(organizations) { org in
+            ForEach(organizations.sortedForDisplay()) { org in
                 Button {
                     selectedOrganization = org
                 } label: {
@@ -1246,7 +1246,7 @@ struct ContentView: View {
             // Add-ons List
             if !addons.isEmpty {
                 LazyVStack(spacing: 12) {
-                    ForEach(addons) { addon in
+                    ForEach(filteredAddons) { addon in
                         addonRow(addon)
                     }
                 }
@@ -1648,7 +1648,7 @@ struct ContentView: View {
         // Use organization-specific method if organization is selected
         let applicationsPublisher: AnyPublisher<[CCApplication], CCError>
 
-        if let orgId = orgId, orgId.hasPrefix("orga_") {
+        if let orgId = orgId, CCOrganization.isOrganizationId(orgId) {
             // Real organization - use organization applications endpoint WITH STATES
             applicationsPublisher = cleverCloudSDK.applications.getApplicationsWithStates(forOrganization: orgId)
         } else {
@@ -1772,7 +1772,7 @@ struct ContentView: View {
         // Use organization-specific method if organization is selected
         let addonsPublisher: AnyPublisher<[CCAddon], CCError>
 
-        if let orgId = orgId, orgId.hasPrefix("orga_") {
+        if let orgId = orgId, CCOrganization.isOrganizationId(orgId) {
             // Real organization - use organization addons endpoint
             addonsPublisher = cleverCloudSDK.getOrganizationAddons(organizationId: orgId)
         } else {

@@ -23,14 +23,9 @@ struct AddonDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedTab = 0
-    @State private var ssoData: CCAddonSSOData?
     @State private var isLoadingEnvironment = false
     @State private var envError: String?
-    @State private var showCopiedAlert = false
-    @State private var copiedText = ""
-    @State private var isLoadingSSO = false
-    @State private var ssoError: String?
-    
+
     // Logs-related states
     @State private var logs: [CCLogEntry] = []
     @State private var isLoadingLogs = false
@@ -110,6 +105,12 @@ struct AddonDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
             loadAddonData()
+        }
+        .onDisappear {
+            // Belt-and-suspenders: ensure the SSE log stream is torn down when the whole add-on
+            // detail leaves the screen (e.g. switching add-ons on iPad), not only when the
+            // full-screen logs view is dismissed.
+            stopLogsPolling()
         }
     }
     
@@ -408,9 +409,8 @@ struct AddonDetailView: View {
         .fullScreenCover(isPresented: $showingAddonLogsFullScreen) {
             addonLogsFullScreen
         }
-        .onAppear {
-            startLogsPolling()
-        }
+        // The SSE stream is started/stopped by the full-screen logsTab's onAppear/onDisappear, so it
+        // only runs while logs are actually on screen — not merely because this trampoline tab showed.
     }
 
     private var addonLogsFullScreen: some View {
@@ -573,6 +573,7 @@ struct AddonDetailView: View {
                     .buttonStyle(.bordered)
                     .tint(.red)
                     .disabled(logs.isEmpty)
+                    .accessibilityLabel("Clear logs")
                 }
             }
             
@@ -588,6 +589,7 @@ struct AddonDetailView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                     }
+                    .accessibilityLabel("Clear search")
                 }
             }
             .padding(8)
@@ -878,16 +880,6 @@ struct AddonDetailView: View {
         } // Group
     }
 
-    private func formatAddonPeriod(_ period: String) -> String {
-        switch period {
-        case "PT1H": return "Last Hour"
-        case "PT6H": return "Last 6 Hours"
-        case "PT24H": return "Last 24 Hours"
-        case "P7D": return "Last 7 Days"
-        default: return "Last Hour"
-        }
-    }
-
     private func intervalForAddonPeriod(_ period: String) -> String {
         switch period {
         case "PT1H": return "PT5M"
@@ -956,11 +948,7 @@ struct AddonDetailView: View {
         // Load environment variables
         isLoadingEnvironment = true
         loadEnvironmentVariables()
-        
-        // Load SSO data
-        isLoadingSSO = true
-        loadSSOData()
-        
+
         // Metrics token will be fetched when metrics tab is accessed
     }
     
@@ -998,28 +986,6 @@ struct AddonDetailView: View {
             receiveValue: { variables in
                 debugLog("✅ Loaded \(variables.count) environment variables for addon")
                 self.environmentVariables = variables
-            }
-        )
-        .store(in: &cancellables)
-    }
-    
-    private func loadSSOData() {
-        cleverCloudSDK.addons.getAddonSSOData(
-            addonId: addon.id,
-            organizationId: organizationId
-        )
-        .receive(on: DispatchQueue.main)
-        .sink(
-            receiveCompletion: { completion in
-                if case .failure(let error) = completion {
-                    debugLog("⚠️ Failed to load SSO data: \(error)")
-                    // Not critical, SSO might not be available for all add-ons
-                }
-                self.isLoadingSSO = false
-            },
-            receiveValue: { ssoData in
-                debugLog("✅ Loaded SSO data")
-                self.ssoData = ssoData
             }
         )
         .store(in: &cancellables)
@@ -1141,7 +1107,7 @@ struct AddonDetailView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                             // Send notification to parent to refresh and dismiss
                             NotificationCenter.default.post(
-                                name: NSNotification.Name("AddonDestroyed"),
+                                name: .addonDestroyed,
                                 object: addon.id
                             )
                         }
@@ -1183,6 +1149,7 @@ struct EnvironmentVariableCard: View {
                         .foregroundColor(isCopied ? .green : .blue)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Copy \(key)")
             }
             
             Text(value)
@@ -1371,101 +1338,6 @@ struct FilterChip: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// Time series data structure for charts
-struct CCAddonTimeSeriesData: Identifiable {
-    let id = UUID()
-    let timestamp: Date
-    let value: Double
-}
-
-/// Metric card component
-struct MetricCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    var trend: Double? = nil
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                Spacer()
-                // Show trend indicator if available
-                if let trend = trend {
-                    // Extract numeric value from string for comparison
-                    let numericValue = Double(value.replacingOccurrences(of: "%", with: "")
-                        .replacingOccurrences(of: " MB", with: "")
-                        .replacingOccurrences(of: " GB", with: "")
-                        .replacingOccurrences(of: ",", with: ".")) ?? 0
-                    
-                    Image(systemName: trend > numericValue ? "arrow.up.right" : "arrow.down.right")
-                        .font(.caption)
-                        .foregroundColor(trend > numericValue ? .red : .green)
-                }
-            }
-            
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.primary)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-}
-
-/// Chart card component (aliased as MetricChart)
-typealias MetricChart = ChartCard
-
-struct ChartCard: View {
-    let title: String
-    let data: [CCAddonTimeSeriesData]
-    let color: Color
-    let unit: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-            
-            Chart(data) { item in
-                LineMark(
-                    x: .value("Time", item.timestamp),
-                    y: .value("Value", item.value)
-                )
-                .foregroundStyle(color)
-                .interpolationMethod(.catmullRom)
-                
-                AreaMark(
-                    x: .value("Time", item.timestamp),
-                    y: .value("Value", item.value)
-                )
-                .foregroundStyle(color.opacity(0.1))
-                .interpolationMethod(.catmullRom)
-            }
-            .frame(height: 200)
-            .chartYAxisLabel(unit)
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisGridLine()
-                    AxisTick()
-                    AxisValueLabel(format: .dateTime.hour())
-                }
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
     }
 }
 

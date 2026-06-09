@@ -9,17 +9,25 @@ public enum CCConnectionState: Equatable, Sendable {
 }
 
 // MARK: - Event Models
-public struct CCPlatformEvent {
+//
+// Concrete, `Sendable` value crossing the Combine boundary into AppState. The raw `[String: Any]`
+// JSON payload is parsed on the producer side (`handleIncomingText`) into the only fields any
+// consumer reads — `appId` and `state` — so no non-Sendable dictionary travels across threads.
+public struct CCPlatformEvent: Sendable {
     public let id: String
     public let timestamp: Date
     public let type: String
-    public let data: [String: Any]
+    /// Application this event refers to (from the deployment payload's `id`/`appId`).
+    public let appId: String?
+    /// Deployment state, e.g. WIP / OK / FAIL / CANCELLED.
+    public let state: String?
 
-    public init(id: String, timestamp: Date, type: String, data: [String: Any]) {
+    public init(id: String, timestamp: Date, type: String, appId: String?, state: String?) {
         self.id = id
         self.timestamp = timestamp
         self.type = type
-        self.data = data
+        self.appId = appId
+        self.state = state
     }
 }
 
@@ -58,31 +66,42 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
         eventSubject.eraseToAnyPublisher()
     }
 
-    // WebSocket state
+    // WebSocket state — all mutated/read ONLY on `serialQueue` (URLSession callbacks are routed
+    // there via the session's delegate queue, see init), which is what makes `@unchecked Sendable` honest.
     private var webSocketTask: URLSessionWebSocketTask?
     private var isUserConnected = false
     private var reconnectAttempt = 0
     private let maxReconnectDelay: TimeInterval = 30.0
-    private var reconnectTimer: Timer?
+    /// Pending reconnect, scheduled via `serialQueue.asyncAfter` (a DispatchQueue has no run loop, so
+    /// `Timer.scheduledTimer` would silently never fire here). Cancellable on disconnect.
+    private var reconnectWorkItem: DispatchWorkItem?
 
     // Kept for compatibility with callers — the WebSocket doesn't poll, but if it becomes a fallback
     // we may want a periodic ping. For now this is informational only.
     private var pollingInterval: TimeInterval = 15.0
 
-    private let serialQueue = DispatchQueue(label: "com.fredalix.cciosclient.events", qos: .userInitiated)
+    private let serialQueue: DispatchQueue
 
     // MARK: - Initialization
     public init(baseURL: String, oauthSigner: CCOAuthSigner) {
         self.apiV2BaseURL = baseURL
         self.oauthSigner = oauthSigner
 
+        let queue = DispatchQueue(label: "com.fredalix.cciosclient.events", qos: .userInitiated)
+        self.serialQueue = queue
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.urlSession = URLSession(configuration: config)
+        // Deliver all URLSession completion handlers (send/receive) on `serialQueue`, the same queue
+        // connect()/disconnect() run on — so every access to the mutable WebSocket state is serialized.
+        let delegateQueue = OperationQueue()
+        delegateQueue.underlyingQueue = queue
+        delegateQueue.maxConcurrentOperationCount = 1
+        self.urlSession = URLSession(configuration: config, delegate: nil, delegateQueue: delegateQueue)
 
         super.init()
-        debugLog("ℹ️ ✅ CCEventsService initialized [endpoint=\(eventSocketURL().absoluteString)]")
+        debugLog("ℹ️ ✅ CCEventsService initialized [endpoint=\(eventSocketURL()?.absoluteString ?? apiV2BaseURL)]")
     }
 
     // MARK: - Public API (preserved for AppState)
@@ -109,8 +128,8 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
                 return
             }
             self.isUserConnected = false
-            self.reconnectTimer?.invalidate()
-            self.reconnectTimer = nil
+            self.reconnectWorkItem?.cancel()
+            self.reconnectWorkItem = nil
             self.reconnectAttempt = 0
             self.closeSocket(reason: "user disconnect")
             self.updateConnectionState(.disconnected)
@@ -129,12 +148,12 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
 
     // MARK: - WebSocket lifecycle
 
-    private func eventSocketURL() -> URL {
-        // baseURL is https://api.clever-cloud.com/v2 — strip the https scheme and append the path.
-        var components = URLComponents(string: apiV2BaseURL)!
+    private func eventSocketURL() -> URL? {
+        // baseURL is https://api.clever-cloud.com/v2 — swap the scheme to wss and append the path.
+        guard var components = URLComponents(string: apiV2BaseURL) else { return nil }
         components.scheme = "wss"
         components.path = (components.path as NSString).appendingPathComponent("events/event-socket")
-        return components.url!
+        return components.url
     }
 
     private func authMessageJSON() -> String? {
@@ -173,7 +192,12 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
             return
         }
 
-        let url = eventSocketURL()
+        guard let url = eventSocketURL() else {
+            debugLog("❌ Cannot open events WS — invalid socket URL from base \(apiV2BaseURL)")
+            updateConnectionState(.failed("invalid socket URL"))
+            scheduleReconnect()
+            return
+        }
         debugLog("ℹ️ 🔌 Opening events WebSocket: \(url.absoluteString)")
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
@@ -289,7 +313,12 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
             ?? (parsed["id"] as? String)
             ?? UUID().uuidString
 
-        let event = CCPlatformEvent(id: id, timestamp: timestamp, type: eventName, data: payload)
+        // The deployment payload's `id` is the application id (matches @clevercloud/client's
+        // `_matchesAppId` which compares against `data.id`, then `data.appId`).
+        let appId = (payload["id"] as? String) ?? (payload["appId"] as? String)
+        let state = payload["state"] as? String
+
+        let event = CCPlatformEvent(id: id, timestamp: timestamp, type: eventName, appId: appId, state: state)
         eventSubject.send(event)
     }
 
@@ -331,14 +360,15 @@ public final class CCEventsService: NSObject, ObservableObject, @unchecked Senda
         let delay = min(pow(2.0, Double(reconnectAttempt)), maxReconnectDelay)
         debugLog("ℹ️ 🔁 Events WS reconnect in \(Int(delay))s (attempt \(reconnectAttempt))")
 
-        reconnectTimer?.invalidate()
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            self.serialQueue.async {
-                guard self.isUserConnected else { return }
-                self.openSocket()
-            }
+        // asyncAfter on serialQueue: no run loop required (unlike Timer), and stays on the one queue
+        // that owns all WebSocket state. Cancellable so disconnect() can drop a pending reconnect.
+        reconnectWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isUserConnected else { return }
+            self.openSocket()
         }
+        reconnectWorkItem = work
+        serialQueue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func updateConnectionState(_ newState: CCConnectionState) {

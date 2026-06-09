@@ -29,7 +29,10 @@ struct ApplicationDetailView: View {
     @State private var editVariableValue = ""
     
     @State private var cancellables = Set<AnyCancellable>()
-    
+    /// Guards the one-time initial API load so SwiftUI relayout (NavigationSplitView rebuilds on iPad)
+    /// doesn't re-issue the same requests on every `onAppear`.
+    @State private var didRunInitialLoad = false
+
     // Application actions state
     @State private var isStarting = false
     @State private var isStopping = false
@@ -163,23 +166,28 @@ struct ApplicationDetailView: View {
             }
         }
         .onAppear {
-            // 🔄 CRITICAL: Always force refresh data from API when appearing
-            Task {
-                await forceRefreshFromAPI()
-            }
-            
-            // Initialize view state
+            // Initialize view state (cheap + idempotent).
             selectedFlavor = application.instance.minFlavor
             currentApplicationFlavor = application.instance.minFlavor
+
+            // Initial data load, once per view lifetime. Live updates afterwards come from the
+            // polling/event system and the .onReceive refresh notifications below.
+            guard !didRunInitialLoad else { return }
+            didRunInitialLoad = true
             loadEnvironmentVariables()
             refreshApplicationState()
-            
-            // 🔄 Listen for scaling configuration updates
-            setupNotificationListeners()
+            Task { await forceRefreshFromAPI() }
         }
-        .onDisappear {
-            // Clean up notification listeners
-            NotificationCenter.default.removeObserver(self)
+        // SwiftUI-managed notification subscriptions — torn down automatically with the view. Replaces
+        // the previous block-based addObserver + removeObserver(self), where removeObserver(self) was a
+        // no-op for a value-type View, leaking an observer on every (re)appearance.
+        .onReceive(NotificationCenter.default.publisher(for: .refreshApplicationData)) { notification in
+            if let appId = notification.object as? String, appId == application.id {
+                Task { @MainActor in forceCompleteRefresh() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshApplicationList)) { _ in
+            Task { @MainActor in forceCompleteRefresh() }
         }
     }
     
@@ -1112,6 +1120,7 @@ struct ApplicationDetailView: View {
                                     Image(systemName: "doc.on.doc")
                                         .foregroundColor(.blue)
                                 }
+                                .accessibilityLabel("Copy default domain")
                             }
                             .padding()
                             .background(Color(.systemGray6))
@@ -1163,6 +1172,7 @@ struct ApplicationDetailView: View {
                                             Image(systemName: "doc.on.doc")
                                                 .foregroundColor(.blue)
                                         }
+                                        .accessibilityLabel("Copy domain \(domain.fqdn)")
 
                                         Button(action: {
                                             domainToDelete = domain.fqdn
@@ -1172,6 +1182,8 @@ struct ApplicationDetailView: View {
                                                 .foregroundColor(.red)
                                         }
                                         .disabled(isDeletingDomain)
+                                        .accessibilityLabel("Delete domain \(domain.fqdn)")
+                                        .accessibilityHint("Removes this domain from the application")
                                     }
                                     .padding()
                                     .background(Color(.systemBackground))
@@ -1216,6 +1228,7 @@ struct ApplicationDetailView: View {
                                             .font(.caption)
                                             .foregroundColor(.blue)
                                     }
+                                    .accessibilityLabel("Copy CNAME record")
                                 }
                                 .padding(8)
                                 .background(Color.blue.opacity(0.1))
@@ -1231,7 +1244,7 @@ struct ApplicationDetailView: View {
                                     .fontWeight(.semibold)
 
                                 Text("91.208.207.214-218, 220-223")
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.system(.caption2, design: .monospaced))
                                     .foregroundColor(.secondary)
                             }
 
@@ -1754,7 +1767,7 @@ struct ApplicationDetailView: View {
                         presentationMode.wrappedValue.dismiss()
 
                         // Post notification to refresh the application list
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshApplicationList"), object: nil)
+                        NotificationCenter.default.post(name: .refreshApplicationList, object: nil)
 
                     case .failure(let error):
                         actionMessage = "❌ Failed to delete application: \(error.localizedDescription)"
@@ -1777,42 +1790,7 @@ struct ApplicationDetailView: View {
         refreshApplicationState()
     }
     
-    /// Setup notification listeners for refresh events
-    private func setupNotificationListeners() {
-        // Listen for scaling configuration updates from ScalabilityConfigurationView
-        let applicationId = application.id // Capture the ID to avoid concurrency issues
-        
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("RefreshApplicationData"),
-            object: nil,
-            queue: .main
-        ) { notification in
-            // Check if this notification is for our application
-            if let appId = notification.object as? String,
-               appId == applicationId {
-                debugLog("🔄 [ApplicationDetailView] Received refresh notification for application: \(appId)")
-                
-                // Use Task to handle the async call properly
-                Task { @MainActor in
-                    self.forceCompleteRefresh()
-                }
-            }
-        }
-        
-        // Also listen for global refresh requests
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("RefreshApplicationList"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            debugLog("🔄 [ApplicationDetailView] Received global refresh notification")
-            Task { @MainActor in
-                self.forceCompleteRefresh()
-            }
-        }
-    }
-    
-    /// Force complete refresh of all application data 
+    /// Force complete refresh of all application data
     @MainActor private func forceCompleteRefresh() {
         debugLog("🔄 [ApplicationDetailView] Starting force complete refresh...")
         
@@ -1887,7 +1865,7 @@ struct ApplicationDetailView: View {
                     
                     // Post notification for other views
                     NotificationCenter.default.post(
-                        name: NSNotification.Name("ApplicationStateChanged"),
+                        name: .applicationStateChanged,
                         object: application.id,
                         userInfo: ["status": computedStatus]
                     )
@@ -1896,33 +1874,10 @@ struct ApplicationDetailView: View {
             .store(in: &cancellables)
     }
     
-    /// Compute application status from instances (following clever-tools computeStatus pattern)
+    /// Compute application status from instances. Delegates to the single source of truth
+    /// `ApplicationStatus.compute` so AppState and this view never disagree on precedence.
     private func computeApplicationStatus(from instances: [CCApplicationInstance]) -> String {
-        guard !instances.isEmpty else {
-            return "Stopped"
-        }
-        
-        let instanceStates = instances.map { $0.state.uppercased() }
-        
-        // Priority order based on clever-tools logic
-        if instanceStates.contains("FAILED") {
-            return "Failed"
-        }
-        
-        if instanceStates.contains("DEPLOYING") {
-            return "Deploying"
-        }
-        
-        if instanceStates.contains("UP") {
-            return "Running"
-        }
-        
-        if instanceStates.contains("DOWN") || instanceStates.contains("SHOULD_BE_DOWN") {
-            return "Stopped"
-        }
-        
-        // Default case
-        return "Unknown"
+        ApplicationStatus.compute(from: instances).description
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -2467,7 +2422,7 @@ struct ApplicationDetailView: View {
                     // Send notification to parent to refresh and dismiss
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                         NotificationCenter.default.post(
-                            name: NSNotification.Name("ApplicationDestroyed"), 
+                            name: .applicationDestroyed, 
                             object: application.id
                         )
                     }
@@ -2997,7 +2952,7 @@ extension ApplicationDetailView {
 
                             HStack {
                                 Text("domain.par.clever-cloud.com.")
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.system(.caption2, design: .monospaced))
                                     .foregroundColor(.blue)
 
                                 Button(action: {
@@ -3023,7 +2978,7 @@ extension ApplicationDetailView {
                                 .frame(width: 50, alignment: .leading)
 
                             Text("91.208.207.214-218, 220-223")
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.system(.caption2, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
                     }
