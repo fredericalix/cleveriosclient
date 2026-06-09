@@ -10,6 +10,7 @@ public protocol CCNamedEntity {
 
 extension CCApplication: CCNamedEntity {}
 extension CCAddon: CCNamedEntity {}
+extension CCNetworkGroup: CCNamedEntity {}
 
 extension Sequence where Element: CCNamedEntity {
     /// Alphabetical, Finder-style ordering: case/diacritic-insensitive and

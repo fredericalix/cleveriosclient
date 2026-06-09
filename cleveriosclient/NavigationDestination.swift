@@ -4,4 +4,5 @@ import Foundation
 enum AppDestination: Hashable {
     case applicationDetail(CCApplication, String?)  // app + orgId
     case addonDetail(CCAddon, String?)              // addon + orgId
+    case networkGroup(CCNetworkGroup, String?)      // network group + orgId
 }

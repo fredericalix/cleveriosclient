@@ -9,8 +9,10 @@ public class CCNetworkGroupService {
     // MARK: - Properties
     private let httpClient: CCHTTPClient
 
-    /// Flag to disable Network Groups functionality temporarily
-    private let isNetworkGroupsEnabled = false
+    /// Flag to disable Network Groups functionality temporarily.
+    /// Enabled 2026-06: the v4 Network Groups API is being driven from the app UI. Endpoints/models
+    /// are validated against the live API; decoding is kept tolerant (optionals) to survive shape drift.
+    private let isNetworkGroupsEnabled = true
 
     /// Error returned when Network Groups are disabled
     private let featureDisabledError = CCError.invalidParameters("Network Groups feature is temporarily disabled. Please wait for Clever Cloud to stabilize this feature.")
@@ -247,6 +249,14 @@ public class CCNetworkGroupService {
             return Fail(error: featureDisabledError).eraseToAnyPublisher()
         }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration/stream", apiVersion: .v4)
+    }
+
+    /// Get the WireGuard configuration for a peer as raw text (the API returns a `.conf` as
+    /// text/plain, per clever-client.js — not JSON, so this avoids the JSON-decoding path).
+    /// The returned `[Interface] PrivateKey` is typically empty/placeholder for an externally-keyed
+    /// peer; the caller injects the locally-generated private key before presenting/importing.
+    public func getWireGuardConfigurationText(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<String, CCError> {
+        return httpClient.getRawString("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration", apiVersion: .v4)
     }
     
     // MARK: - Real-time Network Group Monitoring

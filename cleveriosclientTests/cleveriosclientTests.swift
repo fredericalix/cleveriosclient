@@ -146,3 +146,55 @@ struct ApplicationStatusComputeTests {
         #expect(ApplicationStatus.compute(from: instances(["SHOULD_BE_DOWN"])) == .stopped)
     }
 }
+
+// MARK: - Network Groups: WireGuard key generation + config assembly
+
+@Suite("WireGuard")
+struct WireGuardTests {
+
+    @Test("Generated keys are 32-byte Curve25519 keys, base64-encoded")
+    func keyPairIsValid() throws {
+        let pair = WireGuardKey.generate()
+        let priv = try #require(Data(base64Encoded: pair.privateKeyBase64))
+        let pub = try #require(Data(base64Encoded: pair.publicKeyBase64))
+        #expect(priv.count == 32)
+        #expect(pub.count == 32)
+        // Two generations differ.
+        #expect(WireGuardKey.generate().privateKeyBase64 != pair.privateKeyBase64)
+    }
+
+    @Test("injectingPrivateKey replaces an existing PrivateKey line")
+    func injectReplaces() {
+        let config = "[Interface]\nPrivateKey =\nAddress = 10.0.0.2/32\n\n[Peer]\nPublicKey = abc"
+        let out = WireGuardConfigView.injectingPrivateKey("MYKEY==", into: config)
+        #expect(out.contains("PrivateKey = MYKEY=="))
+        #expect(!out.contains("PrivateKey =\n"))
+        #expect(out.contains("[Peer]"))
+    }
+
+    @Test("injectingPrivateKey inserts after [Interface] when absent")
+    func injectInserts() {
+        let config = "[Interface]\nAddress = 10.0.0.2/32"
+        let out = WireGuardConfigView.injectingPrivateKey("KEY", into: config)
+        let lines = out.components(separatedBy: "\n")
+        #expect(lines.first == "[Interface]")
+        #expect(lines.contains("PrivateKey = KEY"))
+    }
+}
+
+// MARK: - Network Groups: request body field mapping (validate against the live API)
+
+@Suite("CCNetworkGroupCreate encoding")
+struct NetworkGroupCreateEncodingTests {
+
+    @Test("Maps name->label and cidr->networkIp in the JSON body")
+    func encodesExpectedKeys() throws {
+        let req = CCNetworkGroupCreate(name: "ng", description: "d", cidr: "10.0.0.0/16", region: "par")
+        let data = try JSONEncoder().encode(req)
+        let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(obj["label"] as? String == "ng")
+        #expect(obj["networkIp"] as? String == "10.0.0.0/16")
+        #expect(obj["region"] as? String == "par")
+        #expect(obj["description"] as? String == "d")
+    }
+}

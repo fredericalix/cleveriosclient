@@ -36,6 +36,10 @@ struct ContentView: View {
     @State private var addonProviders: [CCAddonProvider] = []
     @State private var addonError: String?
 
+    // Network groups state
+    @State private var networkGroups: [CCNetworkGroup] = []
+    @State private var networkGroupError: String?
+
     // Organization selection
     @State private var selectedOrganization: CCOrganization?
 
@@ -75,12 +79,17 @@ struct ContentView: View {
     @State private var selectedDetailView: DetailViewType = .dashboard
     @State private var selectedApplicationForDetail: CCApplication?
     @State private var selectedAddonForDetail: CCAddon?
+    @State private var selectedNetworkGroupForDetail: CCNetworkGroup?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    
+
+    // Network group creation
+    @State private var showingCreateNetworkGroup = false
+
     enum DetailViewType {
         case dashboard
         case applicationDetail
         case addonDetail
+        case networkGroupDetail
     }
     
     // Computed property to determine if we're on iPad - Using Apple recommended method
@@ -170,6 +179,10 @@ struct ContentView: View {
 
     var filteredAddons: [CCAddon] {
         return addons.sortedByName() // Alphabetical by default; no other filtering on add-ons yet
+    }
+
+    var filteredNetworkGroups: [CCNetworkGroup] {
+        return networkGroups.sortedByName() // Alphabetical by default
     }
 
     var body: some View {
@@ -284,6 +297,7 @@ struct ContentView: View {
                         organizationsCard
                         applicationsCard
                         addonsCard
+                        networkGroupsCard
                     }
                     .padding(.horizontal)
 
@@ -319,6 +333,8 @@ struct ContentView: View {
                     ApplicationDetailView(application: app, cleverCloudSDK: cleverCloudSDK, organizationId: orgId)
                 case .addonDetail(let addon, let orgId):
                     AddonDetailView(addon: addon, organizationId: orgId, cleverCloudSDK: cleverCloudSDK)
+                case .networkGroup(let ng, let orgId):
+                    NetworkGroupDetailView(networkGroup: ng, organizationId: orgId, cleverCloudSDK: cleverCloudSDK)
                 }
             }
         }
@@ -339,6 +355,16 @@ struct ContentView: View {
             if let destroyedAddonId = notification.object as? String {
                 // Remove from addons list
                 addons.removeAll { $0.id == destroyedAddonId }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .networkGroupDestroyed)) { notification in
+            // Handle network group destruction
+            if let destroyedNgId = notification.object as? String {
+                networkGroups.removeAll { $0.id == destroyedNgId }
+                if selectedNetworkGroupForDetail?.id == destroyedNgId {
+                    selectedNetworkGroupForDetail = nil
+                    selectedDetailView = .dashboard
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
@@ -368,6 +394,17 @@ struct ContentView: View {
                 }
             })
                 .environment(coordinator)
+        }
+        .sheet(isPresented: $showingCreateNetworkGroup) {
+            CreateNetworkGroupView(
+                organizationId: selectedOrganization?.id,
+                cleverCloudSDK: cleverCloudSDK,
+                onNetworkGroupCreated: {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        testGetNetworkGroups()
+                    }
+                }
+            )
         }
     }
     
@@ -445,6 +482,30 @@ struct ContentView: View {
                             }
                         }
                     }
+
+                    Section {
+                        if filteredNetworkGroups.isEmpty {
+                            Text(networkGroupError ?? "No network groups")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(filteredNetworkGroups) { ng in
+                                networkGroupRowForSidebar(ng)
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text("Network Groups (\(filteredNetworkGroups.count))")
+                            Spacer()
+                            Button {
+                                showingCreateNetworkGroup = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Create network group")
+                        }
+                    }
                 }
                 .listStyle(.insetGrouped)
                 .refreshable {
@@ -479,6 +540,17 @@ struct ContentView: View {
                 if let addon = selectedAddonForDetail {
                     AddonDetailView(
                         addon: addon,
+                        organizationId: selectedOrganization?.id,
+                        cleverCloudSDK: cleverCloudSDK
+                    )
+                } else {
+                    iPadDashboardView
+                        .navigationTitle("Dashboard")
+                }
+            case .networkGroupDetail:
+                if let ng = selectedNetworkGroupForDetail {
+                    NetworkGroupDetailView(
+                        networkGroup: ng,
                         organizationId: selectedOrganization?.id,
                         cleverCloudSDK: cleverCloudSDK
                     )
@@ -876,10 +948,66 @@ struct ContentView: View {
         }
     }
     
+    private func selectNetworkGroupDetail(_ ng: CCNetworkGroup) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedNetworkGroupForDetail = ng
+            selectedApplicationForDetail = nil
+            selectedAddonForDetail = nil
+            selectedDetailView = .networkGroupDetail
+        }
+    }
+
     private func autoSelectFirstApplicationOnIpad() {
         if isIpad && !applications.isEmpty {
             if let firstApp = applications.first {
                 selectApplicationDetail(firstApp)
+            }
+        }
+    }
+
+    // MARK: - Network Group Sidebar Row (iPad)
+
+    private func networkGroupRowForSidebar(_ ng: CCNetworkGroup) -> some View {
+        Button(action: {
+            selectNetworkGroupDetail(ng)
+        }) {
+            HStack {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .foregroundColor(.purple)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ng.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    if let cidr = ng.cidr {
+                        Text(cidr)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Circle()
+                    .fill(ng.isActive ? .green : .gray)
+                    .frame(width: 8, height: 8)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                selectNetworkGroupDetail(ng)
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+            }
+            Divider()
+            Button {
+                UIPasteboard.general.string = ng.id
+            } label: {
+                Label("Copy network group ID", systemImage: "doc.on.doc")
             }
         }
     }
@@ -1265,7 +1393,115 @@ struct ContentView: View {
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
-    
+
+    // MARK: - Network Groups Card (iPhone)
+
+    private var networkGroupsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .foregroundColor(.purple)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Network Groups")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    if let selectedOrg = selectedOrganization {
+                        Text("for \(selectedOrg.name)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+
+                Button {
+                    showingCreateNetworkGroup = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.purple)
+                        .font(.title2)
+                }
+                .accessibilityLabel("Create network group")
+
+                Text("\(networkGroups.count)")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.2))
+                    .cornerRadius(8)
+            }
+
+            if let networkGroupError = networkGroupError {
+                Text(networkGroupError)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+            }
+
+            if !networkGroups.isEmpty {
+                LazyVStack(spacing: 12) {
+                    ForEach(filteredNetworkGroups) { ng in
+                        networkGroupRow(ng)
+                    }
+                }
+            } else if networkGroupError == nil {
+                ContentUnavailableView(
+                    "No network groups",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    description: Text("Create a network group to connect apps, add-ons and external devices over a private network.")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+
+    private func networkGroupRow(_ ng: CCNetworkGroup) -> some View {
+        Button {
+            navigationPath.append(AppDestination.networkGroup(ng, selectedOrganization?.id))
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .foregroundColor(.purple)
+                        .font(.title2)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ng.name)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        if let cidr = ng.cidr {
+                            Text(cidr)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let status = ng.status {
+                            addonStatusBadge(status)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     // MARK: - Testing Actions Card
 
     
@@ -1620,6 +1856,7 @@ struct ContentView: View {
                 guard selectedDetailView == .dashboard else { return }
                 testGetApplications(silent: true)
                 testGetAddons(silent: true)
+                testGetNetworkGroups(silent: true)
             }
         )
     }
@@ -1802,7 +2039,40 @@ struct ContentView: View {
             )
             .store(in: &cancellables)
     }
-    
+
+    /// Fetch the network groups for the selected organization. Network groups are owner-scoped via
+    /// `/organisations/{ownerId}/...`; if no organization is selected there is nothing to load.
+    private func testGetNetworkGroups(silent: Bool = false) {
+        let targetOrganization = selectedOrganization ?? organizations.first
+        guard let orgId = targetOrganization?.id else {
+            networkGroups = []
+            return
+        }
+
+        if !silent {
+            networkGroupError = nil
+            networkGroups = []
+        }
+
+        cleverCloudSDK.networkGroups.getNetworkGroups(organizationId: orgId)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion, !silent {
+                        networkGroupError = error.localizedDescription
+                    }
+                    // In silent mode keep the current list and don't surface transient errors.
+                },
+                receiveValue: { loadedGroups in
+                    if networkGroups != loadedGroups {
+                        networkGroups = loadedGroups
+                    }
+                    if !silent { networkGroupError = nil }
+                }
+            )
+            .store(in: &cancellables)
+    }
+
     private func testGetAddonProviders() {
         // Clear previous state
         addonError = nil
@@ -1878,6 +2148,8 @@ struct ContentView: View {
         // Clear error states
         errorMessage = nil
         addonError = nil
+        networkGroupError = nil
+        networkGroups = []
 
         // Cancel any in-flight status requests from the previous org and drop the
         // ContentView SDK subscriptions so old responses cannot race the new ones.
@@ -1905,7 +2177,8 @@ struct ContentView: View {
             // Auto-load add-ons for the new organization (after applications)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 testGetAddons()
-                
+                testGetNetworkGroups()
+
                 // On iPad, try to maintain the previous selection after data reload
                 if isIpad {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -1949,12 +2222,16 @@ struct ContentView: View {
                     debugLog("🔄 [iPad Navigation] Previous addon not found, staying on dashboard")
                 }
             }
+        case .networkGroupDetail:
+            // Network group selection is not auto-restored across org switches (the previous group
+            // belongs to the previous org); fall back to the dashboard.
+            break
         case .dashboard:
             // Already on dashboard, nothing to do
             break
         }
     }
-    
+
     // MARK: - SwiftData Methods (Original)
     
     private func addItem() {

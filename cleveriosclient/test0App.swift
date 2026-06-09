@@ -59,6 +59,8 @@ extension Notification.Name {
     static let applicationDestroyed = Notification.Name("ApplicationDestroyed")
     /// An add-on was destroyed; `object` carries the add-on id.
     static let addonDestroyed = Notification.Name("AddonDestroyed")
+    /// A network group was destroyed; `object` carries the network group id.
+    static let networkGroupDestroyed = Notification.Name("NetworkGroupDestroyed")
 }
 
 /// Vue racine de l'application
