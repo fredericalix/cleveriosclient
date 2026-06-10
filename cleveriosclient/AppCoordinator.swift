@@ -55,13 +55,9 @@ final class AppCoordinator {
         _configuration = CCConfiguration(
             consumerKey: "T5nFjKeHH4AIlEveuGhB5S3xg8T19e",      // Credentials officielles
             consumerSecret: "MgVMqTr6fWlf2M0tkC2MXOnhfqBWDT",    // de clever-tools
-            enableDebugLogging: {
-                #if DEBUG
-                return true
-                #else
-                return false
-                #endif
-            }()
+            // Debug mode ON in all build configurations (verbose HTTP/OAuth/SDK traces).
+            // ⚠️ Revert to the #if DEBUG closure before App Store submission.
+            enableDebugLogging: true
         )
 
         // Load credentials from Keychain

@@ -20,7 +20,9 @@ import Foundation
 
 /// Force console logging in any build configuration. Default `false`.
 /// Flip to `true` only for short-lived production diagnostics.
-public let kForceConsoleLogs: Bool = false
+/// ⚠️ TEMPORARILY `true` for debugging — REVERT to `false` before any App Store submission
+/// (otherwise log strings ship in the Release binary).
+public let kForceConsoleLogs: Bool = true
 
 @inlinable
 public func debugLog(_ message: @autoclosure () -> String) {
