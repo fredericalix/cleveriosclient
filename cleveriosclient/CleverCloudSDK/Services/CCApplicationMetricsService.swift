@@ -259,7 +259,7 @@ public class CCApplicationMetricsService: ObservableObject {
 
                 debugLog("🌐 [CCApplicationMetricsService] Executing WarpScript for metric: \(metricName)")
 
-                return self.warp10Client.executeWarpScript(warpScript)
+                return self.warp10Client.executeWarpScript(warpScript, organizationId: organizationId)
                     .tryMap { data in
                         return try self.parseWarp10NetworkResponse(
                             data: data,

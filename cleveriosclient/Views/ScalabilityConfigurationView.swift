@@ -478,10 +478,13 @@ struct ScalabilityConfigurationView: View {
                     applyMessage = "🚀 Configuration applied! Starting application redeploy..."
                 }
                 
-                // 🔄 AUTO-REDEPLOY: Like clever-tools, automatically redeploy after scaling change
+                // 🔄 AUTO-REDEPLOY: Like clever-tools, automatically redeploy after scaling change.
+                // The only valid v2 redeploy route is POST .../applications/{appId}/instances —
+                // CCApplicationService.restartApplication uses it (the old
+                // deployments.redeployApplication posted to a nonexistent /redeploy and 404'd).
                 do {
                     let _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                        cleverCloudSDK.deployments.redeployApplication(
+                        cleverCloudSDK.applications.restartApplication(
                             applicationId: application.id,
                             organizationId: organizationId
                         )
@@ -545,43 +548,16 @@ struct ScalabilityConfigurationView: View {
     }
     
     private func refreshApplicationData() async {
-        // 🔄 FORCE REFRESH: Reload application data from API to reflect the new scaling configuration
-        do {
-            // Small delay to allow server to process the update
-            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            
-            // 🚀 FORCE RELOAD from API
-            await MainActor.run {
-                // Send multiple refresh notifications to ensure UI updates
-                NotificationCenter.default.post(
-                    name: .refreshApplicationData,
-                    object: application.id
-                )
-                
-                // Also send global refresh to update application list
-                NotificationCenter.default.post(
-                    name: .refreshApplicationList,
-                    object: nil
-                )
-                
-                debugLog("🔄 Sent refresh notifications for application: \(application.id)")
-            }
-            
-            // Additional delay and second refresh to ensure data is updated
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 more second
-            
-            await MainActor.run {
-                // Send another round of refresh notifications
-                NotificationCenter.default.post(
-                    name: .refreshApplicationData,
-                    object: application.id
-                )
-                
-                debugLog("🔄 Sent second refresh notification for application: \(application.id)")
-            }
-            
-        } catch {
-            debugLog("🔄 Error during refresh delay: \(error)")
+        // Reload application data to reflect the new scaling configuration. ONE notification —
+        // the old double-post (+ the misnamed .refreshApplicationList, observed only by
+        // ApplicationDetailView itself) triggered three overlapping refresh cascades per apply.
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // Let the server process the update.
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .refreshApplicationData,
+                object: application.id
+            )
+            debugLog("🔄 Sent refresh notification for application: \(application.id)")
         }
     }
 }

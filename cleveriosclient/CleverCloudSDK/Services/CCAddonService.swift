@@ -42,7 +42,8 @@ public class CCAddonService: ObservableObject {
     /// - Returns: Publisher with CCAddon object
     public func getAddon(addonId: String, organizationId: String? = nil) -> AnyPublisher<CCAddon, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)"
         } else {
             endpoint = "/self/addons/\(addonId)"
@@ -63,7 +64,8 @@ public class CCAddonService: ObservableObject {
     ) -> AnyPublisher<CCAddonPreorderResponse, CCError> {
         debugLog("🚀 CCAddonService.preorderAddon(name: \(request.name)) called")
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/preorders"
         } else {
             endpoint = "/self/addons/preorders"
@@ -82,7 +84,8 @@ public class CCAddonService: ObservableObject {
     ) -> AnyPublisher<CCAddon, CCError> {
         debugLog("🚀 CCAddonService.createAddon(name: \(request.name)) called")
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons"
         } else {
             endpoint = "/self/addons"
@@ -100,7 +103,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<CCAddon, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons"
         } else {
             endpoint = "/self/addons"
@@ -120,7 +124,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<CCAddon, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)"
         } else {
             endpoint = "/self/addons/\(addonId)"
@@ -135,7 +140,8 @@ public class CCAddonService: ObservableObject {
     /// - Returns: Publisher indicating completion
     public func deleteAddon(addonId: String, organizationId: String? = nil) -> AnyPublisher<EmptyResponse, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)"
         } else {
             endpoint = "/self/addons/\(addonId)"
@@ -155,7 +161,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<[String: String], CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/env"
         } else {
             endpoint = "/self/addons/\(addonId)/env"
@@ -230,7 +237,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<[CCAddonApplicationLink], CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/applications"
         } else {
             endpoint = "/self/addons/\(addonId)/applications"
@@ -282,7 +290,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<[String], CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/tags"
         } else {
             endpoint = "/self/addons/\(addonId)/tags"
@@ -302,7 +311,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/tags/\(tag)"
         } else {
             endpoint = "/self/addons/\(addonId)/tags/\(tag)"
@@ -322,7 +332,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/tags/\(tag)"
         } else {
             endpoint = "/self/addons/\(addonId)/tags/\(tag)"
@@ -342,7 +353,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<[String], CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/tags"
         } else {
             endpoint = "/self/addons/\(addonId)/tags"
@@ -364,7 +376,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<EmptyResponse, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/plan"
         } else {
             endpoint = "/self/addons/\(addonId)/plan"
@@ -386,7 +399,8 @@ public class CCAddonService: ObservableObject {
         organizationId: String? = nil
     ) -> AnyPublisher<CCAddonSSOData, CCError> {
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/sso"
         } else {
             endpoint = "/self/addons/\(addonId)/sso"
@@ -600,7 +614,8 @@ public class CCAddonService: ObservableObject {
         to: Date? = nil
     ) -> AnyPublisher<CCAddonConsumption, CCError> {
         var endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/addons/\(addonId)/consumption"
         } else {
             endpoint = "/self/addons/\(addonId)/consumption"
@@ -645,7 +660,8 @@ public class CCAddonService: ObservableObject {
         to: Date? = nil
     ) -> AnyPublisher<[CCAddonMetricPoint], CCError> {
         var endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/stats/organisations/\(orgId)/resources/\(addonId)/metrics"
         } else {
             endpoint = "/stats/organisations/self/resources/\(addonId)/metrics"

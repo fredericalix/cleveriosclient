@@ -255,3 +255,57 @@ struct NetworkGroupMemberDecodingTests {
         #expect(members.first?.type == .unknown)
     }
 }
+
+// MARK: - Log redaction (audit 2026-06-10: request bodies must never log secrets in clear)
+
+@Suite("redactSecretsForLog")
+struct LogRedactionTests {
+
+    @Test("Env-var JSON body masks token/secret/password values but keeps key names")
+    func envVarBodyIsMasked() {
+        let body = #"{"DATABASE_PASSWORD":"hunter2","API_TOKEN":"tok_123","PLAIN":"visible"}"#
+        let redacted = redactSecretsForLog(body)
+        #expect(!redacted.contains("hunter2"))
+        #expect(!redacted.contains("tok_123"))
+        #expect(redacted.contains("DATABASE_PASSWORD"))
+        #expect(redacted.contains("visible"))
+    }
+
+    @Test("Connection-string credentials are masked")
+    func connectionStringIsMasked() {
+        let body = #"{"ADDON_URI":"postgresql://user:s3cret@host:5432/db"}"#
+        let redacted = redactSecretsForLog(body)
+        #expect(!redacted.contains("s3cret"))
+        #expect(redacted.contains("***:***@"))
+    }
+
+    @Test("WireGuard INI PrivateKey line is masked")
+    func wireGuardPrivateKeyIsMasked() {
+        let conf = "[Interface]\nPrivateKey = abc123base64==\nAddress = 10.0.0.2/16"
+        let redacted = redactSecretsForLog(conf)
+        #expect(!redacted.contains("abc123base64=="))
+        #expect(redacted.contains("Address = 10.0.0.2/16"))
+    }
+
+    @Test("redactedBodyPreview masks Data bodies end-to-end")
+    func bodyPreviewMasks() {
+        let data = Data(#"{"oauth_token_secret":"shhh"}"#.utf8)
+        let preview = redactedBodyPreview(data)
+        #expect(!preview.contains("shhh"))
+    }
+}
+
+// MARK: - Owner-path routing (audit 2026-06-10: user_ ids must route to /self, never /organisations)
+
+@Suite("CCOrganization.isOrganizationId")
+struct OwnerPathRoutingTests {
+
+    @Test("orga_ ids are organizations; user_ / nil / other are personal space")
+    func ownerKindsAreDistinguished() {
+        #expect(CCOrganization.isOrganizationId("orga_12345"))
+        #expect(!CCOrganization.isOrganizationId("user_12345"))
+        #expect(!CCOrganization.isOrganizationId(nil))
+        #expect(!CCOrganization.isOrganizationId(""))
+        #expect(!CCOrganization.isOrganizationId("app_xyz"))
+    }
+}

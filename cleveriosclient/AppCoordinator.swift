@@ -18,6 +18,8 @@ final class AppCoordinator {
     private var _oauthService: CCOAuthService?
     private var authCheckTimer: Timer?
     private var _configuration: CCConfiguration
+    /// Keeps the best-effort logout revoke request alive past logout() returning.
+    private var logoutCancellables = Set<AnyCancellable>()
     
     /// Service OAuth partagé - accessible pour LoginView
     var oauthService: CCOAuthService {
@@ -104,18 +106,43 @@ final class AppCoordinator {
         if configuration.enableDebugLogging {
             debugLog("🔐 Starting user logout process...")
         }
-        
+
+        // Best-effort server-side revoke (DELETE /v2/self/tokens/{token}, same endpoint
+        // @clevercloud/client uses) BEFORE clearing local credentials — the request must still be
+        // OAuth-signed. A leaked token would otherwise stay valid indefinitely after "logout".
+        // Failure is tolerated: local cleanup proceeds regardless.
+        let currentToken = _configuration.accessToken
+        if !currentToken.isEmpty, let sdk = _cleverCloudSDK {
+            sdk.httpClient.deleteRaw("/self/tokens/\(currentToken)", apiVersion: .v2)
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            debugLog("⚠️ Token revoke failed (continuing logout) [error=\(error.localizedDescription)]")
+                        } else {
+                            debugLog("ℹ️ ✅ OAuth token revoked server-side")
+                        }
+                    },
+                    receiveValue: { }
+                )
+                .store(in: &logoutCancellables)
+        }
+
         // Déconnexion via le service OAuth (supprime les credentials du Keychain)
         oauthService.logout()
-        
+
         // Nettoyer tous les états d'authentification
         isAuthenticated = false
         currentUser = nil
         authError = nil
-        
+
         // Effacer les tokens de la configuration
         _configuration.clearTokens()
-        
+
+        // Purge cached authenticated state: Warp10 metrics tokens (valid ~5 days) and any
+        // URL-cached API responses (defense-in-depth; CCHTTPClient no longer uses a URL cache).
+        _cleverCloudSDK?.warp10Client.clearTokenCache()
+        URLCache.shared.removeAllCachedResponses()
+
         if configuration.enableDebugLogging {
             debugLog("✅ User logout completed successfully")
         }

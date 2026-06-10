@@ -8,6 +8,8 @@ struct NetworkGroupDetailView: View {
     let organizationId: String?
     let cleverCloudSDK: CleverCloudSDK
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var members: [CCNetworkGroupMember] = []
     @State private var peers: [CCNetworkGroupPeer] = []
     @State private var loadError: String?
@@ -20,6 +22,13 @@ struct NetworkGroupDetailView: View {
     @State private var deleteConfirmationText = ""
     @State private var isDeleting = false
     @State private var actionError: String?
+    @State private var isLoadingData = false
+    @State private var pendingLoads = 0
+    /// Member/peer staged for removal — set by the row button, confirmed via alert. Removing a
+    /// member breaks its private connectivity; removing a peer invalidates an installed WireGuard
+    /// config. Neither should fire on a single (easily mis-tapped) row-button tap.
+    @State private var pendingMemberRemoval: CCNetworkGroupMember?
+    @State private var pendingPeerRemoval: CCNetworkGroupPeer?
 
     @State private var cancellables = Set<AnyCancellable>()
 
@@ -61,6 +70,38 @@ struct NetworkGroupDetailView: View {
                 cleverCloudSDK: cleverCloudSDK,
                 onPeerCreated: { reload() }
             )
+        }
+        .alert(
+            "Remove member?",
+            isPresented: Binding(
+                get: { pendingMemberRemoval != nil },
+                set: { if !$0 { pendingMemberRemoval = nil } }
+            ),
+            presenting: pendingMemberRemoval
+        ) { member in
+            Button("Cancel", role: .cancel) { pendingMemberRemoval = nil }
+            Button("Remove", role: .destructive) {
+                removeMember(member)
+                pendingMemberRemoval = nil
+            }
+        } message: { member in
+            Text("“\(member.name)” will lose its private connectivity to the other members of this network group.")
+        }
+        .alert(
+            "Remove peer?",
+            isPresented: Binding(
+                get: { pendingPeerRemoval != nil },
+                set: { if !$0 { pendingPeerRemoval = nil } }
+            ),
+            presenting: pendingPeerRemoval
+        ) { peer in
+            Button("Cancel", role: .cancel) { pendingPeerRemoval = nil }
+            Button("Remove", role: .destructive) {
+                removeExternalPeer(peer)
+                pendingPeerRemoval = nil
+            }
+        } message: { peer in
+            Text("The WireGuard configuration installed for “\(peer.name)” will stop working permanently.")
         }
     }
 
@@ -173,7 +214,14 @@ struct NetworkGroupDetailView: View {
                     .accessibilityLabel("Add member")
                 }
 
-                if appAndAddonMembers.isEmpty {
+                // A fetch failure must not render as "no members" — that empty state invites the
+                // user to mutate a group whose real state couldn't even be read.
+                if let loadError {
+                    loadErrorView(loadError)
+                } else if isLoadingData && appAndAddonMembers.isEmpty {
+                    ProgressView("Loading members…")
+                        .frame(maxWidth: .infinity).padding(.vertical, 24)
+                } else if appAndAddonMembers.isEmpty {
                     ContentUnavailableView(
                         "No members",
                         systemImage: "square.stack.3d.up",
@@ -203,7 +251,7 @@ struct NetworkGroupDetailView: View {
                 Text(ip).font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary)
             }
             Button(role: .destructive) {
-                removeMember(member)
+                pendingMemberRemoval = member
             } label: {
                 Image(systemName: "minus.circle").foregroundColor(.red)
             }
@@ -231,7 +279,12 @@ struct NetworkGroupDetailView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
-                if peers.isEmpty {
+                if let loadError {
+                    loadErrorView(loadError)
+                } else if isLoadingData && peers.isEmpty {
+                    ProgressView("Loading peers…")
+                        .frame(maxWidth: .infinity).padding(.vertical, 24)
+                } else if peers.isEmpty {
                     ContentUnavailableView(
                         "No peers",
                         systemImage: "laptopcomputer.and.iphone",
@@ -259,7 +312,7 @@ struct NetworkGroupDetailView: View {
             Spacer()
             if peer.isExternal {
                 Button(role: .destructive) {
-                    removeExternalPeer(peer)
+                    pendingPeerRemoval = peer
                 } label: {
                     Image(systemName: "minus.circle").foregroundColor(.red)
                 }
@@ -273,6 +326,20 @@ struct NetworkGroupDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private func loadErrorView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            ContentUnavailableView(
+                "Failed to load",
+                systemImage: "exclamationmark.triangle",
+                description: Text(message)
+            )
+            Button("Retry") { reload() }
+                .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
 
     private func infoRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
         HStack {
@@ -302,12 +369,17 @@ struct NetworkGroupDetailView: View {
     private func reload() {
         guard let orgId = organizationId else { return }
         actionError = nil
+        loadError = nil
+        isLoadingData = true
+        pendingLoads = 2
 
         cleverCloudSDK.networkGroups
             .getNetworkGroupMembers(organizationId: orgId, networkGroupId: networkGroup.id)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
+                    pendingLoads -= 1
+                    if pendingLoads <= 0 { isLoadingData = false }
                     if case .failure(let error) = completion { loadError = error.localizedDescription }
                 },
                 receiveValue: { members = $0 }
@@ -319,6 +391,8 @@ struct NetworkGroupDetailView: View {
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
+                    pendingLoads -= 1
+                    if pendingLoads <= 0 { isLoadingData = false }
                     if case .failure(let error) = completion { loadError = error.localizedDescription }
                 },
                 receiveValue: { peers = $0 }
@@ -368,6 +442,14 @@ struct NetworkGroupDetailView: View {
     }
 
     private func deleteNetworkGroup() {
+        // In-action backstop: `.disabled` on alert buttons isn't reliably re-evaluated while the
+        // alert is presented, so the type-to-confirm gate must also be enforced here.
+        guard deleteConfirmationText == networkGroup.name else {
+            actionError = "Name did not match — network group not deleted."
+            deleteConfirmationText = ""
+            return
+        }
+        deleteConfirmationText = ""
         guard let orgId = organizationId else { return }
         isDeleting = true
         cleverCloudSDK.networkGroups
@@ -379,7 +461,10 @@ struct NetworkGroupDetailView: View {
                     if case .failure(let error) = completion {
                         actionError = error.localizedDescription
                     } else {
+                        // Both ContentView layouts observe this to drop the group from their lists
+                        // and reset any selection; dismissing pops the pushed detail on iPhone.
                         NotificationCenter.default.post(name: .networkGroupDestroyed, object: networkGroup.id)
+                        dismiss()
                     }
                 },
                 receiveValue: { _ in }

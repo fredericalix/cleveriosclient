@@ -53,6 +53,7 @@ struct WireGuardConfigView: View {
     var onPeerCreated: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var deviceName: String = "My device"
     @State private var phase: Phase = .idle
@@ -82,6 +83,18 @@ struct WireGuardConfigView: View {
             }
             .navigationTitle("Attach this device")
             .navigationBarTitleDisplayMode(.inline)
+            // The ready view shows the WireGuard private key (text + QR). Cover it while the scene
+            // is not active so the key doesn't land in the app-switcher snapshot.
+            .overlay {
+                if phase == .ready && scenePhase != .active {
+                    ZStack {
+                        Rectangle().fill(.regularMaterial).ignoresSafeArea()
+                        Label("Hidden while in background", systemImage: "eye.slash")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
@@ -194,10 +207,14 @@ struct WireGuardConfigView: View {
                     .cornerRadius(8)
 
                 Button {
-                    // The config contains a private key — auto-expire it from the system-wide clipboard.
+                    // The config contains a private key — auto-expire it from the clipboard and keep
+                    // it off Universal Clipboard (it would otherwise sync to the user's other devices).
                     UIPasteboard.general.setItems(
                         [["public.utf8-plain-text": configText]],
-                        options: [.expirationDate: Date().addingTimeInterval(120)]
+                        options: [
+                            .expirationDate: Date().addingTimeInterval(120),
+                            .localOnly: true
+                        ]
                     )
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)

@@ -30,7 +30,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("🚀 CCDeploymentService.getDeployments() called for app: \(applicationId)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments"
@@ -107,7 +108,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("🔍 CCDeploymentService.getDeployment() called for deployment: \(deploymentId)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments/\(deploymentId)"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments/\(deploymentId)"
@@ -130,7 +132,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("🚀 CCDeploymentService.createDeployment() called for app: \(applicationId)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments"
@@ -155,7 +158,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("🛑 CCDeploymentService.cancelDeployment() called for deployment: \(deploymentId)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments/\(deploymentId)/cancel"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments/\(deploymentId)/cancel"
@@ -185,7 +189,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("📄 CCDeploymentService.getDeploymentLogs() called for deployment: \(deploymentId)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments/\(deploymentId)/logs"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments/\(deploymentId)/logs"
@@ -235,71 +240,10 @@ public class CCDeploymentService: ObservableObject {
             .eraseToAnyPublisher()
     }
     
-    // MARK: - Quick Actions
-    
-    /// Restart an application (create a restart deployment)
-    /// - Parameters:
-    ///   - applicationId: The application ID
-    ///   - organizationId: Optional organization ID (nil for user applications)
-    /// - Returns: Publisher with created CCDeployment object
-    public func restartApplication(
-        applicationId: String,
-        organizationId: String? = nil
-    ) -> AnyPublisher<CCDeployment, CCError> {
-        debugLog("🔄 CCDeploymentService.restartApplication() called for app: \(applicationId)")
-        
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/restart"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/restart"
-        }
-        
-        return httpClient.post(endpoint, body: EmptyRequest(), apiVersion: .v2)
-    }
-    
-    /// Redeploy an application with the same configuration
-    /// - Parameters:
-    ///   - applicationId: The application ID
-    ///   - organizationId: Optional organization ID (nil for user applications)
-    /// - Returns: Publisher with created CCDeployment object
-    public func redeployApplication(
-        applicationId: String,
-        organizationId: String? = nil
-    ) -> AnyPublisher<CCDeployment, CCError> {
-        debugLog("🔁 CCDeploymentService.redeployApplication() called for app: \(applicationId)")
-        
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/redeploy"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/redeploy"
-        }
-        
-        return httpClient.post(endpoint, body: EmptyRequest(), apiVersion: .v2)
-    }
-    
-    /// Stop an application (undeploy)
-    /// - Parameters:
-    ///   - applicationId: The application ID
-    ///   - organizationId: Optional organization ID (nil for user applications)
-    /// - Returns: Publisher with created CCDeployment object
-    public func stopApplication(
-        applicationId: String,
-        organizationId: String? = nil
-    ) -> AnyPublisher<CCDeployment, CCError> {
-        debugLog("⏹️ CCDeploymentService.stopApplication() called for app: \(applicationId)")
-        
-        let endpoint: String
-        if let orgId = organizationId {
-            endpoint = "/organisations/\(orgId)/applications/\(applicationId)/stop"
-        } else {
-            endpoint = "/self/applications/\(applicationId)/stop"
-        }
-        
-        return httpClient.post(endpoint, body: EmptyRequest(), apiVersion: .v2)
-    }
-    
+    // NOTE: restart/redeploy/stop quick actions live in CCApplicationService — the only valid v2
+    // routes are POST/DELETE .../applications/{appId}/instances. The /restart, /redeploy and /stop
+    // verbs that used to be here don't exist in the v2 API (404).
+
     // MARK: - Git Integration
     
     /// Deploy from a specific Git commit
@@ -367,7 +311,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("📊 CCDeploymentService.getDeploymentStats() called for app: \(applicationId), period: \(period)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/deployments/stats"
         } else {
             endpoint = "/self/applications/\(applicationId)/deployments/stats"
@@ -388,7 +333,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("⚡ CCDeploymentService.getActiveDeployments() called")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/deployments/active"
         } else {
             endpoint = "/self/deployments/active"
@@ -409,7 +355,8 @@ public class CCDeploymentService: ObservableObject {
         debugLog("🕐 CCDeploymentService.getRecentDeployments() called with limit: \(limit)")
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/deployments/recent"
         } else {
             endpoint = "/self/deployments/recent"

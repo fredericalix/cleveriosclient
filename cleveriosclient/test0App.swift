@@ -52,7 +52,6 @@ extension Notification.Name {
     /// Refresh a single application's data; `object` carries the application id.
     static let refreshApplicationData = Notification.Name("RefreshApplicationData")
     /// Refresh the whole application list (e.g. after a deletion).
-    static let refreshApplicationList = Notification.Name("RefreshApplicationList")
     /// An application's computed status changed; `object` carries the application id.
     static let applicationStateChanged = Notification.Name("ApplicationStateChanged")
     /// An application was destroyed; `object` carries the application id.
@@ -68,6 +67,10 @@ struct AppRootView: View {
     @State private var coordinator = AppCoordinator()
     @State private var appState: AppState?
     @Environment(\.scenePhase) private var scenePhase
+    /// Set on the first `.active` so the launch-time `.inactive → .active` transition doesn't stack
+    /// a redundant refresh on top of ContentView.onAppear — while every later return to `.active`
+    /// (including from `.inactive`: Control Center, system dialogs, app-switcher peek) re-arms polling.
+    @State private var hasBecomeActiveOnce = false
 
     var body: some View {
         Group {
@@ -103,11 +106,14 @@ struct AppRootView: View {
                     appState.stopPolling()
                 }
             case .active:
-                // Only refresh when truly coming back from background. SwiftUI emits an
-                // `.inactive → .active` transition at launch which would otherwise stack a
-                // redundant refresh on top of ContentView's onAppear loadData().
-                if oldPhase == .background && coordinator.isAuthenticated {
-                    debugLog("ℹ️ 🔄 Scene → active (from background) — requesting foreground refresh")
+                // Re-arm on EVERY return to .active after launch. stopPolling() fires on .inactive
+                // too (Control Center, system dialogs, app-switcher peek, incoming call), and those
+                // round-trips never pass through .background — gating the restart on
+                // `oldPhase == .background` left polling and the events WebSocket dead for the rest
+                // of the session. The one-shot flag (not oldPhase) filters the launch transition.
+                defer { hasBecomeActiveOnce = true }
+                if hasBecomeActiveOnce && coordinator.isAuthenticated {
+                    debugLog("ℹ️ 🔄 Scene → active (from \(String(describing: oldPhase))) — requesting foreground refresh")
                     NotificationCenter.default.post(name: .appRefreshRequested, object: nil)
                 }
             @unknown default:

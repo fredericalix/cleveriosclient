@@ -284,6 +284,12 @@ struct ApplicationLogsView: View {
         isLoadingLogs = logs.isEmpty
         logsError = nil
 
+        // The buffer (`logs`) is a Binding owned by ApplicationDetailView and survives this cover
+        // being dismissed/re-presented, but `knownIds` is local @State recreated empty each time.
+        // Seed it from the buffer or the SSE replay re-appends entries already on screen
+        // (duplicate ForEach ids).
+        knownIds = Set(logs.map(\.id))
+
         logStream = cleverCloudSDK.applications.streamApplicationLogs(
             applicationId: application.id,
             organizationId: organizationId

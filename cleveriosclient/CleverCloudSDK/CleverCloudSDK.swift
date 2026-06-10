@@ -148,10 +148,12 @@ public final class CleverCloudSDK: ObservableObject {
     }
     
     /// Quick method to get application details
-    /// - Parameter applicationId: Application identifier
+    /// - Parameters:
+    ///   - applicationId: Application identifier
+    ///   - organizationId: Optional organization identifier (org-owned apps 404 under /self)
     /// - Returns: Publisher with application details
-    public func getApplication(id applicationId: String) -> AnyPublisher<CCApplication, CCError> {
-        return applications.getApplication(applicationId: applicationId)
+    public func getApplication(id applicationId: String, organizationId: String? = nil) -> AnyPublisher<CCApplication, CCError> {
+        return applications.getApplication(applicationId: applicationId, organizationId: organizationId)
             .handleEvents(receiveCompletion: { [weak self] completion in
                 if case .failure(let error) = completion {
                     self?.setError(error)
@@ -297,16 +299,17 @@ public final class CleverCloudSDK: ObservableObject {
             .eraseToAnyPublisher()
     }
     
-    /// Quick method to restart an application
+    /// Quick method to restart an application (POST .../applications/{appId}/instances — the only
+    /// valid v2 redeploy route; the old deployments variant posted to a nonexistent /restart).
     /// - Parameters:
     ///   - applicationId: Application identifier
     ///   - organizationId: Optional organization identifier
-    /// - Returns: Publisher with deployment object
+    /// - Returns: Publisher that completes on success
     public func restartApplication(
         applicationId: String,
         organizationId: String? = nil
-    ) -> AnyPublisher<CCDeployment, CCError> {
-        return deployments.restartApplication(applicationId: applicationId, organizationId: organizationId)
+    ) -> AnyPublisher<EmptyResponse, CCError> {
+        return applications.restartApplication(applicationId: applicationId, organizationId: organizationId)
             .handleEvents(receiveCompletion: { [weak self] completion in
                 if case .failure(let error) = completion {
                     self?.setError(error)
@@ -314,7 +317,7 @@ public final class CleverCloudSDK: ObservableObject {
             })
             .eraseToAnyPublisher()
     }
-    
+
     /// Quick method to get active deployments
     /// - Parameter organizationId: Optional organization identifier
     /// - Returns: Publisher with active deployments array

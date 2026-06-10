@@ -250,7 +250,8 @@ public class CCEnvironmentService {
         
         // Step 1: Get current application (following clever-tools setScalability)
         let getAppEndpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             getAppEndpoint = "/organisations/\(orgId)/applications/\(applicationId)"
         } else {
             getAppEndpoint = "/self/applications/\(applicationId)"
@@ -329,46 +330,39 @@ public class CCEnvironmentService {
                 }
                 
                 // Step 4: Use updateApplication endpoint (not /instances!)
+                // Route non-"orga_" ids (personal-space "user_…") to /self — /organisations/user_xxx 404s.
                 let endpoint: String
-                if let orgId = organizationId {
+                if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
                     endpoint = "/organisations/\(orgId)/applications/\(applicationId)"
                 } else {
                     endpoint = "/self/applications/\(applicationId)"
                 }
-                
+
                 // 🔧 FIX: Use requestRawWithBody to avoid JSON parsing issues
-                // The API returns the complete updated application, but we don't need to parse it
+                // The API returns the complete updated application, but we don't need to parse it.
+                // Failures MUST propagate as CCError — the old .catch converted every failure
+                // (401, 404, network down) into a success-typed value, and callers reported
+                // "configuration applied" for updates that never happened.
                 return self.httpClient.requestRawWithBody(
                     method: .PUT,
                     endpoint: endpoint,
                     body: mergedConfig,
                     apiVersion: .v2
                 )
-                .map { (data: Data) -> CCConfigurationUpdateResponse in
-                    if self.enableLogging { 
-                        debugLog("✅ Application updated successfully using clever-tools method") 
-                        
-                        // Optional: Log the response for debugging
-                        if let responseString = String(data: data, encoding: .utf8) {
-                            debugLog("📦 API Response: \(responseString.prefix(200))...")
-                        }
+                .map { (_: Data) -> CCConfigurationUpdateResponse in
+                    if self.enableLogging {
+                        debugLog("✅ Application updated successfully using clever-tools method")
                     }
-                    
-                    // The API call succeeded - return success response
                     return CCConfigurationUpdateResponse(
                         success: true,
                         message: "Application configuration updated successfully"
                     )
                 }
-                .catch { error in
-                    if self.enableLogging { debugLog("❌ Failed to update application configuration: \(error)") }
-                    
-                    return Just(CCConfigurationUpdateResponse(
-                        success: false,
-                        message: "Failed to update application configuration: \(error.localizedDescription)"
-                    ))
-                    .setFailureType(to: CCError.self)
-                }
+                .handleEvents(receiveCompletion: { completion in
+                    if case .failure(let error) = completion, self.enableLogging {
+                        debugLog("❌ Failed to update application configuration: \(error)")
+                    }
+                })
                 .receive(on: DispatchQueue.main)
                 .eraseToAnyPublisher()
             }
@@ -482,7 +476,8 @@ public class CCEnvironmentService {
         if enableLogging { debugLog("🔧 Starting application: \(applicationId)") }
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/instances"
         } else {
             endpoint = "/self/applications/\(applicationId)/instances"
@@ -519,7 +514,8 @@ public class CCEnvironmentService {
         if enableLogging { debugLog("🔧 Restarting application: \(applicationId)") }
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/instances"
         } else {
             endpoint = "/self/applications/\(applicationId)/instances"
@@ -556,7 +552,8 @@ public class CCEnvironmentService {
         if enableLogging { debugLog("🔧 Stopping application: \(applicationId)") }
         
         let endpoint: String
-        if let orgId = organizationId {
+        // Personal-space ids ("user_…") must route to /self — /organisations/user_xxx 404s.
+        if let orgId = organizationId, CCOrganization.isOrganizationId(orgId) {
             endpoint = "/organisations/\(orgId)/applications/\(applicationId)/instances"
         } else {
             endpoint = "/self/applications/\(applicationId)/instances"

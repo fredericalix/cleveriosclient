@@ -68,25 +68,52 @@ public class CCWarp10Client: ObservableObject {
             .eraseToAnyPublisher()
     }
     
+    /// Drop all cached Warp10 tokens (called on logout so a ~5-day token doesn't outlive the session).
+    public func clearTokenCache() {
+        tokenCache.removeAll()
+        debugLog("ℹ️ 🧹 [CCWarp10Client] Token cache cleared")
+    }
+
     // MARK: - WarpScript Execution
-    
+
     /// Execute a WarpScript query on Warp10
-    /// - Parameter script: The WarpScript to execute
+    /// - Parameters:
+    ///   - script: The WarpScript to execute
+    ///   - organizationId: When set, an auth failure (401/403) evicts this org's cached token so
+    ///     the next query re-fetches a fresh one instead of replaying a dead token for 4.5 days.
     /// - Returns: Publisher with raw Warp10 response data
-    public func executeWarpScript(_ script: String) -> AnyPublisher<Data, CCError> {
-        
+    public func executeWarpScript(_ script: String, organizationId: String? = nil) -> AnyPublisher<Data, CCError> {
+
         debugLog("📝 [CCWarp10Client] Executing WarpScript (\(script.count) chars)")
-        
+
         let url = URL(string: "\(warp10Endpoint)/exec")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/text", forHTTPHeaderField: "Content-Type")
         request.httpBody = script.data(using: .utf8)
-        
+
         return URLSession.shared.dataTaskPublisher(for: request)
-            .map(\.data)
-            .mapError { urlError in
-                CCError.networkError(urlError)
+            .tryMap { [weak self] data, response in
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw CCError.invalidResponse
+                }
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    // A Warp10 error body would otherwise parse as "no data points" and render as
+                    // silently empty charts.
+                    if httpResponse.statusCode == 401 || httpResponse.statusCode == 403,
+                       let organizationId {
+                        self?.tokenCache[organizationId] = nil
+                        debugLog("⚠️ [CCWarp10Client] Evicted cached token for org \(organizationId) after \(httpResponse.statusCode)")
+                    }
+                    throw CCError.httpError(
+                        statusCode: httpResponse.statusCode,
+                        message: String(data: data.prefix(200), encoding: .utf8)
+                    )
+                }
+                return data
+            }
+            .mapError { error in
+                (error as? CCError) ?? CCError.networkError(error)
             }
             .handleEvents(
                 receiveOutput: { data in
@@ -123,7 +150,7 @@ public class CCWarp10Client: ObservableObject {
                     span: span
                 )
                 
-                return self.executeWarpScript(warpScript)
+                return self.executeWarpScript(warpScript, organizationId: organizationId)
                     .tryMap { data in
                         return try self.parseWarp10Response(
                             data: data,
@@ -160,7 +187,7 @@ public class CCWarp10Client: ObservableObject {
                     span: span
                 )
                 
-                return self.executeWarpScript(warpScript)
+                return self.executeWarpScript(warpScript, organizationId: organizationId)
                     .tryMap { data in
                         return try self.parseWarp10Response(
                             data: data,
@@ -197,7 +224,7 @@ public class CCWarp10Client: ObservableObject {
                     span: span
                 )
                 
-                return self.executeWarpScript(warpScript)
+                return self.executeWarpScript(warpScript, organizationId: organizationId)
                     .tryMap { data in
                         return try self.parseWarp10NetworkResponse(data: data)
                     }

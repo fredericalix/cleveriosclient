@@ -101,6 +101,10 @@ struct ApplicationDetailView: View {
     @State private var networkInMetricsData: [CCApplicationMetricPoint] = []
     @State private var networkOutMetricsData: [CCApplicationMetricPoint] = []
     @State private var metricsTimer: Timer?
+    // The 30s metrics timer re-issues 4 fetches forever; storing each sink in the shared Set would
+    // accumulate ~480 finished cancellables/hour. One slot per metric type — each refresh replaces
+    // (and cancels) the previous fetch of the same metric.
+    @State private var metricsLoadCancellables: [MetricType: AnyCancellable] = [:]
     @State private var metricsService: CCApplicationMetricsService?
     
     // Initialize temp instances values
@@ -185,9 +189,6 @@ struct ApplicationDetailView: View {
             if let appId = notification.object as? String, appId == application.id {
                 Task { @MainActor in forceCompleteRefresh() }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshApplicationList)) { _ in
-            Task { @MainActor in forceCompleteRefresh() }
         }
     }
     
@@ -1763,11 +1764,12 @@ struct ApplicationDetailView: View {
                 receiveCompletion: { completion in
                     switch completion {
                     case .finished:
-                        // Navigate back to the main screen
+                        // Tell both ContentView layouts to drop the app from their lists and clear
+                        // any selection, then close this detail view. (.refreshApplicationList was
+                        // observed by nobody but this very view, which then re-fetched the deleted
+                        // app and 404'd.)
+                        NotificationCenter.default.post(name: .applicationDestroyed, object: application.id)
                         presentationMode.wrappedValue.dismiss()
-
-                        // Post notification to refresh the application list
-                        NotificationCenter.default.post(name: .refreshApplicationList, object: nil)
 
                     case .failure(let error):
                         actionMessage = "❌ Failed to delete application: \(error.localizedDescription)"
@@ -1790,51 +1792,15 @@ struct ApplicationDetailView: View {
         refreshApplicationState()
     }
     
-    /// Force complete refresh of all application data
+    /// Refresh all application data after an external change (e.g. scaling applied).
+    /// One fetch of each kind — reloadApplicationFromAPI already updates the application object and
+    /// the flavor/instances @State from the API response; the old sleep-and-refetch-twice body just
+    /// clobbered user-touched state with stale values in between.
     @MainActor private func forceCompleteRefresh() {
-        debugLog("🔄 [ApplicationDetailView] Starting force complete refresh...")
-        
-        // Reset loading states
-        isLoading = true
-        isLoadingLogs = true
-        
-        // 🎯 CRITICAL FIX: Update ALL local state properties with fresh application data
-        debugLog("🔄 [ApplicationDetailView] BEFORE refresh - Current flavor: \(currentApplicationFlavor?.name ?? "nil"), App flavor: \(application.instance.minFlavor.name)")
-        
-        selectedFlavor = application.instance.minFlavor
-        currentApplicationFlavor = application.instance.minFlavor
-        tempMinInstances = Double(application.instance.minInstances)
-        tempMaxInstances = Double(application.instance.maxInstances)
-        
-        debugLog("🔄 [ApplicationDetailView] AFTER local update - New flavor: \(currentApplicationFlavor?.name ?? "nil")")
-        
-        // Force reload application data first from API
-        self.reloadApplicationFromAPI()
-        
-        // Then reload everything else
-        Task {
-            // Load environment variables
-            loadEnvironmentVariables()
-            
-            // Refresh application state multiple times to ensure fresh data
-            refreshApplicationState()
-            
-            // Wait and try again to catch any delayed updates
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            refreshApplicationState()
-            
-            await MainActor.run {
-                // 🎯 FINAL UPDATE: Ensure we have the absolute latest data
-                selectedFlavor = application.instance.minFlavor
-                currentApplicationFlavor = application.instance.minFlavor
-                tempMinInstances = Double(application.instance.minInstances)
-                tempMaxInstances = Double(application.instance.maxInstances)
-                
-                debugLog("🔄 [ApplicationDetailView] Force complete refresh completed! Final flavor: \(currentApplicationFlavor?.name ?? "nil")")
-                isLoading = false
-                isLoadingLogs = false
-            }
-        }
+        debugLog("🔄 [ApplicationDetailView] Refreshing application data...")
+        reloadApplicationFromAPI()
+        loadEnvironmentVariables()
+        refreshApplicationState()
     }
     
     private func refreshApplicationState() {
@@ -1940,27 +1906,25 @@ struct ApplicationDetailView: View {
         .sink(
             receiveCompletion: { completion in
                 isApplyingConfiguration = false
-                
+
+                // updateInstanceConfiguration propagates failures as CCError, so .finished
+                // genuinely means the API accepted the update.
                 if case .failure(let error) = completion {
                     configurationMessage = "❌ Failed to apply scaling: \(error.localizedDescription)"
                 } else {
                     configurationMessage = "✅ Scaling configuration applied successfully!"
                 }
-                
+
                 // Clear message after 5 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     configurationMessage = nil
                 }
             },
-            receiveValue: { response in
-                if !response.success {
-                    configurationMessage = "⚠️ \(response.message)"
-                }
-            }
+            receiveValue: { _ in }
         )
         .store(in: &cancellables)
     }
-    
+
     /// Instance type picker sheet
     private var instanceTypePickerSheet: some View {
         NavigationStack {
@@ -2097,36 +2061,24 @@ struct ApplicationDetailView: View {
         .sink(
             receiveCompletion: { completion in
                 isApplyingConfiguration = false
+                // updateInstanceConfiguration uses the raw request path and propagates failures
+                // as CCError — a failure here is a real failure, not the old decode flakiness.
                 if case .failure(let error) = completion {
-                    // 🔄 IMPORTANT: Even if there's a parsing error, the API might have succeeded!
-                    // Force refresh to check if the change was applied on Clever Cloud
-                    configurationMessage = "🔄 Configuration may have succeeded - checking updates..."
-                    reloadApplicationFromAPI()
-                    
-                    // Also log the error for debugging
-                    debugLog("⚠️ API call had error (but may have succeeded): \(error.localizedDescription)")
+                    configurationMessage = "❌ Failed to change instance type: \(error.localizedDescription)"
+                    debugLog("❌ Instance type change failed: \(error.localizedDescription)")
                 } else {
                     configurationMessage = "✅ Instance type changed to \(newFlavor.name.uppercased()) successfully!"
                     showingInstanceTypePicker = false
                     // Force reload of application data from API to show updated flavor
                     reloadApplicationFromAPI()
                 }
-                
+
                 // Clear message after 5 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     configurationMessage = nil
                 }
             },
-            receiveValue: { response in
-                if !response.success {
-                    // 🔄 Even if response indicates failure, try to refresh to be sure
-                    configurationMessage = "🔄 Checking if configuration was applied..."
-                    reloadApplicationFromAPI()
-                    debugLog("⚠️ Response success=false but forcing refresh: \(response.message)")
-                } else {
-                    configurationMessage = "✅ Configuration applied successfully!"
-                }
-            }
+            receiveValue: { _ in }
         )
         .store(in: &cancellables)
     }
@@ -2317,8 +2269,9 @@ struct ApplicationDetailView: View {
     private func reloadApplicationFromAPI() {
         debugLog("🔄 Reloading application data from API to check for changes...")
         
-        // Use the applications service to get fresh data from the API
-        cleverCloudSDK.applications.getApplication(applicationId: application.id)
+        // Use the applications service to get fresh data from the API. Pass the org id: org-owned
+        // apps are not visible under /self/applications/{id} and the refresh would 404.
+        cleverCloudSDK.applications.getApplication(applicationId: application.id, organizationId: organizationId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
@@ -2407,26 +2360,17 @@ struct ApplicationDetailView: View {
                             configurationMessage = nil
                         }
                     } else {
-                        configurationMessage = "✅ Application '\(application.name)' destroyed successfully!"
-                        
-                        // Navigate back after successful destruction
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            // The parent view should handle navigation back
-                            // Could send a notification or use a callback
-                        }
-                    }
-                },
-                receiveValue: { _ in
-                    debugLog("✅ Application '\(application.name)' destroyed successfully")
-                    
-                    // Send notification to parent to refresh and dismiss
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        debugLog("✅ Application '\(application.name)' destroyed successfully")
+                        // Both ContentView layouts observe this to drop the app from their lists
+                        // and reset any selection; dismissing pops the pushed detail on iPhone.
                         NotificationCenter.default.post(
-                            name: .applicationDestroyed, 
+                            name: .applicationDestroyed,
                             object: application.id
                         )
+                        presentationMode.wrappedValue.dismiss()
                     }
-                }
+                },
+                receiveValue: { _ in }
             )
             .store(in: &cancellables)
         
@@ -2459,6 +2403,7 @@ struct ApplicationDetailView: View {
     private func stopMetricsUpdates() {
         metricsTimer?.invalidate()
         metricsTimer = nil
+        metricsLoadCancellables.removeAll()
     }
     
     /// Load metrics data for all metric types
@@ -2479,7 +2424,7 @@ struct ApplicationDetailView: View {
     private func loadMetricsForType(_ metricType: MetricType, organizationId: String) {
         guard let metricsService = metricsService else { return }
 
-        metricsService.getApplicationTimeSeries(
+        metricsLoadCancellables[metricType] = metricsService.getApplicationTimeSeries(
             applicationId: application.id,
             organizationId: organizationId,
             metric: metricType,
@@ -2513,7 +2458,6 @@ struct ApplicationDetailView: View {
                 }
             }
         )
-        .store(in: &cancellables)
     }
     
     /// Get appropriate interval for a given period

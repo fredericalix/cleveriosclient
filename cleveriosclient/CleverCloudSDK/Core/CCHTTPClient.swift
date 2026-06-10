@@ -31,7 +31,12 @@ public final class CCHTTPClient: ObservableObject {
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = 30.0
         sessionConfig.timeoutIntervalForResource = 60.0
-        
+        // Every response is OAuth-signed and freshness-critical (the app does its own polling),
+        // so HTTP caching buys nothing — and the default disk cache would persist authenticated
+        // payloads (env vars with credentials) in plaintext under Library/Caches.
+        sessionConfig.urlCache = nil
+        sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
+
         self.urlSession = URLSession(configuration: sessionConfig)
         
         if configuration.enableDebugLogging {
@@ -327,19 +332,17 @@ public final class CCHTTPClient: ObservableObject {
                 request.httpBody = bodyData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 
-                // Debug: Log the JSON payload being sent
+                // Debug: Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
                 if configuration.enableDebugLogging {
-                    if let jsonString = String(data: bodyData, encoding: .utf8) {
-                        debugLog("📦 [DEBUG] JSON Payload being sent:")
-                        debugLog("📦 [DEBUG] \(jsonString)")
-                    }
+                    debugLog("📦 [DEBUG] JSON Payload being sent:")
+                    debugLog("📦 [DEBUG] \(redactedBodyPreview(bodyData))")
                 }
             } catch {
                 return Fail(error: CCError.invalidParameters("Failed to encode request body"))
                     .eraseToAnyPublisher()
             }
         }
-        
+
         // Add OAuth 1.0a authentication headers
         do {
             request = try oauthSigner.signRequest(request)
@@ -347,11 +350,11 @@ public final class CCHTTPClient: ObservableObject {
             return Fail(error: CCError.authenticationFailed)
                 .eraseToAnyPublisher()
         }
-        
+
         if configuration.enableDebugLogging {
             debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(url)")
         }
-        
+
         // Perform request
         return urlSession.dataTaskPublisher(for: request)
             .tryMap { data, response in
@@ -359,7 +362,7 @@ public final class CCHTTPClient: ObservableObject {
                     debugLog("❌ Invalid response type")
                     throw CCError.invalidResponse
                 }
-                
+
                 // Log response details (missing from original requestRawWithBody implementation)
                 debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown"), headers=\(httpResponse.allHeaderFields.description)]")
                 
@@ -446,12 +449,10 @@ public final class CCHTTPClient: ObservableObject {
                 request.httpBody = bodyData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 
-                // Debug: Log the JSON payload being sent
+                // Debug: Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
                 if configuration.enableDebugLogging {
-                    if let jsonString = String(data: bodyData, encoding: .utf8) {
-                        debugLog("📦 [DEBUG] JSON Payload being sent:")
-                        debugLog("📦 [DEBUG] \(jsonString)")
-                    }
+                    debugLog("📦 [DEBUG] JSON Payload being sent:")
+                    debugLog("📦 [DEBUG] \(redactedBodyPreview(bodyData))")
                 }
             } catch {
                 return Fail(error: CCError.invalidParameters("Failed to encode request body"))
@@ -977,7 +978,8 @@ public enum APIVersion {
 /// Best-effort masking of secrets before a response/request body is logged, so that flipping
 /// `kForceConsoleLogs` for a diagnostic build can't dump credentials (OAuth tokens, add-on
 /// connection strings in env vars, etc.). Only ever runs behind `debugLog` (no-op in Release).
-fileprivate func redactSecretsForLog(_ text: String) -> String {
+/// Internal (not fileprivate) so the test target can pin its masking behavior.
+func redactSecretsForLog(_ text: String) -> String {
     var result = text
     // 1. Mask the value of any JSON key whose name looks sensitive: "...token...": "value" -> "***".
     let sensitiveKey = "(\"[^\"]*(?:token|secret|password|passwd|authorization|api[_-]?key|access[_-]?key|private[_-]?key)[^\"]*\"\\s*:\\s*\")[^\"]*(\")"
@@ -1004,7 +1006,7 @@ fileprivate func redactSecretsForLog(_ text: String) -> String {
 }
 
 /// Redacted, size-capped preview of a body for logging.
-fileprivate func redactedBodyPreview(_ data: Data, limit: Int = 500) -> String {
+func redactedBodyPreview(_ data: Data, limit: Int = 500) -> String {
     guard let text = String(data: data, encoding: .utf8) else { return "<\(data.count) bytes, non-UTF8>" }
     return String(redactSecretsForLog(text).prefix(limit))
 }

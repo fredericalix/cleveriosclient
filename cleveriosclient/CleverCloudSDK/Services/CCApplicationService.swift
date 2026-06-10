@@ -55,23 +55,30 @@ public class CCApplicationService: ObservableObject {
     }
     
     /// Get a specific application by ID
-    /// - Parameter applicationId: The application ID
+    /// - Parameters:
+    ///   - applicationId: The application ID
+    ///   - organizationId: Optional organization ID. Org-owned apps are NOT visible under
+    ///     /self/applications/{id} — pass the org id or the fetch 404s.
     /// - Returns: Publisher with CCApplication object
-    public func getApplication(applicationId: String) -> AnyPublisher<CCApplication, CCError> {
-        return httpClient.get("/self/applications/\(applicationId)", apiVersion: .v2)
+    public func getApplication(applicationId: String, organizationId: String? = nil) -> AnyPublisher<CCApplication, CCError> {
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId)
+        return httpClient.get(endpoint, apiVersion: .v2)
     }
-    
-    
+
+
     /// Update an existing application
     /// - Parameters:
     ///   - applicationId: The application ID to update
     ///   - update: CCApplicationUpdate object with changes
+    ///   - organizationId: Optional organization ID. If nil, uses personal space (/self)
     /// - Returns: Publisher with updated CCApplication object
     public func updateApplication(
         applicationId: String,
-        update: CCApplicationUpdate
+        update: CCApplicationUpdate,
+        organizationId: String? = nil
     ) -> AnyPublisher<CCApplication, CCError> {
-        return httpClient.put("/self/applications/\(applicationId)", body: update, apiVersion: .v2)
+        let endpoint = buildApplicationEndpoint(applicationId: applicationId, organizationId: organizationId)
+        return httpClient.put(endpoint, body: update, apiVersion: .v2)
     }
     
     /// Delete an application

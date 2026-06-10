@@ -29,6 +29,11 @@ struct ContentView: View {
     @State private var organizations: [CCOrganization] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    /// Applications load failure, rendered in the applications sections (mirrors `addonError`).
+    /// Distinct from `errorMessage`, which is a legacy write-only debug string.
+    @State private var applicationsError: String?
+    /// True while an org switch is reloading data — drives the "Auto-refreshing data…" spinner.
+    @State private var isSwitchingOrg = false
     @State private var organizationError: String?
 
     // Add-ons state
@@ -44,6 +49,12 @@ struct ContentView: View {
     @State private var selectedOrganization: CCOrganization?
 
     @State private var cancellables = Set<AnyCancellable>()
+    // The 10s data tick re-runs the apps/addons/NG loads forever; storing each sink in the shared
+    // Set would leak ~1,000 finished cancellables per hour. One slot per load kind — each new load
+    // replaces (and cancels) the previous one, which also prevents overlapping duplicate fetches.
+    @State private var applicationsLoadCancellable: AnyCancellable?
+    @State private var addonsLoadCancellable: AnyCancellable?
+    @State private var networkGroupsLoadCancellable: AnyCancellable?
     @State private var refreshTimer: Timer?
 
     // Navigation
@@ -222,32 +233,9 @@ struct ContentView: View {
             startAppStatePolling()
             loadFavorites()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { notification in
-            // Handle application destruction
-            if let destroyedAppId = notification.object as? String {
-                // Remove from applications list
-                applications.removeAll { $0.id == destroyedAppId }
-                
-                // Clear selected detail if it was the destroyed app
-                if selectedApplicationForDetail?.id == destroyedAppId {
-                    selectedDetailView = .dashboard
-                    selectedApplicationForDetail = nil
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { notification in
-            // Handle addon destruction
-            if let destroyedAddonId = notification.object as? String {
-                // Remove from addons list
-                addons.removeAll { $0.id == destroyedAddonId }
-
-                // Clear selected detail if it was the destroyed addon
-                if selectedAddonForDetail?.id == destroyedAddonId {
-                    selectedDetailView = .dashboard
-                    selectedAddonForDetail = nil
-                }
-            }
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { handleApplicationDestroyed($0) }
+        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { handleAddonDestroyed($0) }
+        .onReceive(NotificationCenter.default.publisher(for: .networkGroupDestroyed)) { handleNetworkGroupDestroyed($0) }
         .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
             // Re-arm polling first — it's idempotent and a no-op when timers are already alive,
             // but is needed after scenePhase brings us back from background where stopPolling fired.
@@ -266,23 +254,50 @@ struct ContentView: View {
                 debugLog("ℹ️ 🔄 Organization changed to: \(newOrg.name) - Auto-refreshing data...")
                 autoRefreshOrganizationData(for: newOrg)
 
-                // On iPad, maintain current selection if possible
-                // Only reset to dashboard if explicitly changing organizations (not data refresh)
+                // A detail view kept open across an org switch would pair the OLD org's item with
+                // the NEW org's id — every call inside it (/organisations/{newOrg}/applications/
+                // {oldApp}) would fail. Reset now; maintainSelectionAfterDataReload re-selects the
+                // item if it also exists in the new org once the new data has loaded.
                 if oldValue?.id != newValue?.id {
-                    // This is a real organization change, not just a data refresh
-                    // Keep current selection unless it's no longer valid
-                    if selectedDetailView == .applicationDetail && selectedApplicationForDetail != nil {
-                        // Keep application detail view if we have a selected app
-                    } else if selectedDetailView == .addonDetail && selectedAddonForDetail != nil {
-                        // Keep addon detail view if we have a selected addon
-                    } else {
-                        // Default to dashboard only if no valid selection
-                        selectedDetailView = .dashboard
-                        selectedApplicationForDetail = nil
-                        selectedAddonForDetail = nil
-                    }
+                    selectedDetailView = .dashboard
+                    selectedApplicationForDetail = nil
+                    selectedAddonForDetail = nil
+                    selectedNetworkGroupForDetail = nil
                 }
             }
+        }
+    }
+
+    // MARK: - Destroyed-resource handlers (shared by iPad and iPhone layouts)
+    //
+    // One implementation applied to both layouts so the two notification stacks can't drift apart
+    // (the NG handler used to exist only on iPhone while it mutated iPad-only selection state).
+    // Detail views dismiss themselves after posting; these handlers clean up lists and selection.
+
+    private func handleApplicationDestroyed(_ notification: Notification) {
+        guard let id = notification.object as? String else { return }
+        applications.removeAll { $0.id == id }
+        if selectedApplicationForDetail?.id == id {
+            selectedDetailView = .dashboard
+            selectedApplicationForDetail = nil
+        }
+    }
+
+    private func handleAddonDestroyed(_ notification: Notification) {
+        guard let id = notification.object as? String else { return }
+        addons.removeAll { $0.id == id }
+        if selectedAddonForDetail?.id == id {
+            selectedDetailView = .dashboard
+            selectedAddonForDetail = nil
+        }
+    }
+
+    private func handleNetworkGroupDestroyed(_ notification: Notification) {
+        guard let id = notification.object as? String else { return }
+        networkGroups.removeAll { $0.id == id }
+        if selectedNetworkGroupForDetail?.id == id {
+            selectedDetailView = .dashboard
+            selectedNetworkGroupForDetail = nil
         }
     }
     
@@ -343,30 +358,9 @@ struct ContentView: View {
             startAppStatePolling()
             loadFavorites()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { notification in
-            // Handle application destruction
-            if let destroyedAppId = notification.object as? String {
-                // Remove from applications list
-                applications.removeAll { $0.id == destroyedAppId }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { notification in
-            // Handle addon destruction
-            if let destroyedAddonId = notification.object as? String {
-                // Remove from addons list
-                addons.removeAll { $0.id == destroyedAddonId }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .networkGroupDestroyed)) { notification in
-            // Handle network group destruction
-            if let destroyedNgId = notification.object as? String {
-                networkGroups.removeAll { $0.id == destroyedNgId }
-                if selectedNetworkGroupForDetail?.id == destroyedNgId {
-                    selectedNetworkGroupForDetail = nil
-                    selectedDetailView = .dashboard
-                }
-            }
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .applicationDestroyed)) { handleApplicationDestroyed($0) }
+        .onReceive(NotificationCenter.default.publisher(for: .addonDestroyed)) { handleAddonDestroyed($0) }
+        .onReceive(NotificationCenter.default.publisher(for: .networkGroupDestroyed)) { handleNetworkGroupDestroyed($0) }
         .onReceive(NotificationCenter.default.publisher(for: .appRefreshRequested)) { _ in
             // Re-arm polling first — it's idempotent and a no-op when timers are already alive,
             // but is needed after scenePhase brings us back from background where stopPolling fired.
@@ -460,7 +454,11 @@ struct ContentView: View {
                     }
 
                     Section(header: Text("Applications (\(filteredApplications.count))")) {
-                        if filteredApplications.isEmpty {
+                        if let applicationsError {
+                            Text(applicationsError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        } else if filteredApplications.isEmpty {
                             Text(appSearchText.isEmpty ? "No applications" : "No match for “\(appSearchText)”")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -472,7 +470,11 @@ struct ContentView: View {
                     }
 
                     Section(header: Text("Add-ons (\(filteredAddons.count))")) {
-                        if filteredAddons.isEmpty {
+                        if let addonError {
+                            Text(addonError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        } else if filteredAddons.isEmpty {
                             Text("No add-ons")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -531,11 +533,15 @@ struct ContentView: View {
                     .navigationTitle("Dashboard")
             case .applicationDetail:
                 if let app = selectedApplicationForDetail {
+                    // .id() gives each item its own structural identity: switching item-to-item in
+                    // the detail column tears down the old @State (env vars, logs, SSE streams) and
+                    // re-runs onAppear, instead of silently reusing the previous item's state.
                     ApplicationDetailView(
                         application: app,
                         cleverCloudSDK: cleverCloudSDK,
                         organizationId: selectedOrganization?.id
                     )
+                    .id(app.id)
                 } else {
                     iPadDashboardView
                         .navigationTitle("Dashboard")
@@ -547,6 +553,7 @@ struct ContentView: View {
                         organizationId: selectedOrganization?.id,
                         cleverCloudSDK: cleverCloudSDK
                     )
+                    .id(addon.id)
                 } else {
                     iPadDashboardView
                         .navigationTitle("Dashboard")
@@ -558,6 +565,7 @@ struct ContentView: View {
                         organizationId: selectedOrganization?.id,
                         cleverCloudSDK: cleverCloudSDK
                     )
+                    .id(ng.id)
                 } else {
                     iPadDashboardView
                         .navigationTitle("Dashboard")
@@ -899,59 +907,27 @@ struct ContentView: View {
     
     // MARK: - Selection Methods
     
+    // Item-to-item transitions are handled by `.id(item.id)` on the detail views in detailContent —
+    // SwiftUI tears down and rebuilds the view's state when the id changes, so no dashboard-bounce
+    // hack is needed here.
     private func selectApplicationDetail(_ app: CCApplication) {
-        debugLog("🎯 [iPad Navigation] Selecting application: \(app.name)")
         debugLog("ℹ️ 🎯 [iPad Navigation] Selecting application: \(app.name)")
-        
-        // Check if we're doing an app-to-app transition
-        let isAppToAppTransition = selectedDetailView == .applicationDetail && selectedApplicationForDetail != nil
-        
-        if isAppToAppTransition {
-            debugLog("🔄 [iPad Navigation] App-to-App transition detected - forcing UI refresh")
-            // Force UI refresh by temporarily resetting state
-            selectedDetailView = .dashboard
-            selectedApplicationForDetail = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedApplicationForDetail = app
             selectedAddonForDetail = nil
-            
-            // Short delay to ensure state change is processed by SwiftUI
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    self.selectedApplicationForDetail = app
-                    self.selectedDetailView = .applicationDetail
-                }
-                debugLog("🔄 [iPad Navigation] App-to-App transition complete - App: \(app.name)")
-            }
-        } else {
-            // Normal transition from dashboard/addon to app
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedApplicationForDetail = app
-                selectedAddonForDetail = nil
-                selectedDetailView = .applicationDetail
-            }
-            debugLog("🔄 [iPad Navigation] Normal transition - App: \(app.name)")
+            selectedDetailView = .applicationDetail
         }
     }
-    
+
     private func selectAddonDetail(_ addon: CCAddon) {
-        debugLog("🎯 [iPad Navigation] Selecting addon: \(addon.name)")
         debugLog("ℹ️ 🎯 [iPad Navigation] Selecting addon: \(addon.name)")
-        
-        // Update state atomically to avoid conflicts
         withAnimation(.easeInOut(duration: 0.2)) {
             selectedAddonForDetail = addon
             selectedApplicationForDetail = nil
             selectedDetailView = .addonDetail
         }
-        
-        // On iPad, force a UI refresh to ensure the detail view updates
-        if isIpad {
-            DispatchQueue.main.async {
-                // This ensures the UI refresh happens after the state change
-                debugLog("🔄 [iPad Navigation] State updated - DetailView: \(selectedDetailView), Addon: \(selectedAddonForDetail?.name ?? "nil")")
-            }
-        }
     }
-    
+
     private func selectNetworkGroupDetail(_ ng: CCNetworkGroup) {
         withAnimation(.easeInOut(duration: 0.2)) {
             selectedNetworkGroupForDetail = ng
@@ -1195,7 +1171,7 @@ struct ContentView: View {
             if let selectedOrg = selectedOrganization {
                 organizationRowClickable(selectedOrg)
 
-                if isLoading && errorMessage?.contains("Switching to") == true {
+                if isLoading && isSwitchingOrg {
                     HStack(spacing: 6) {
                         ProgressView()
                             .scaleEffect(0.7)
@@ -1297,6 +1273,18 @@ struct ContentView: View {
                 .padding(.vertical)
             }
 
+            // Load failure — distinct from the empty state so an API error doesn't masquerade
+            // as "you have no applications" (mirrors the addonError block below).
+            if let applicationsError {
+                Text(applicationsError)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+            }
+
             // Applications List
             if !filteredApplications.isEmpty {
                 LazyVStack(spacing: 12) {
@@ -1312,7 +1300,7 @@ struct ContentView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-            } else if !isLoading {
+            } else if !isLoading && applicationsError == nil {
                 ContentUnavailableView(
                     "No applications",
                     systemImage: "app",
@@ -1882,7 +1870,7 @@ struct ContentView: View {
         let orgId = targetOrganization?.id
 
         if !silent {
-            errorMessage = "Loading applications for \(orgName)..."
+            applicationsError = nil
             isLoading = true
         }
 
@@ -1897,16 +1885,17 @@ struct ContentView: View {
             applicationsPublisher = cleverCloudSDK.applications.getApplicationsWithStates()
         }
 
-        applicationsPublisher
+        applicationsLoadCancellable = applicationsPublisher
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
                     if !silent {
                         isLoading = false
+                        isSwitchingOrg = false
                         if case .failure(let error) = completion {
-                            errorMessage = "getApplications failed for \(orgName): \(error.localizedDescription)"
+                            applicationsError = "Failed to load applications for \(orgName): \(error.localizedDescription)"
                         } else {
-                            errorMessage = "✅ Applications loaded for \(orgName)!"
+                            applicationsError = nil
                         }
                     }
                     if case .finished = completion {
@@ -1919,9 +1908,8 @@ struct ContentView: View {
                     }
                 }
             )
-            .store(in: &cancellables)
     }
-    
+
     private func testGetApplicationById() {
         isLoading = true
         errorMessage = nil
@@ -1997,7 +1985,7 @@ struct ContentView: View {
     ///   visible list flash. The list is updated only when the response differs from the current
     ///   one. Manual paths (pull-to-refresh, org switch) keep the default `false` and the
     ///   original "Loading…" feedback.
-    private func testGetAddons(silent: Bool = false) {
+    private func testGetAddons(silent: Bool = false, onLoaded: (() -> Void)? = nil) {
         // Determine which organization to use
         let targetOrganization = selectedOrganization ?? organizations.first
         let orgName = targetOrganization?.name ?? "Default"
@@ -2006,7 +1994,6 @@ struct ContentView: View {
         if !silent {
             addonError = nil
             addons = []
-            errorMessage = "Loading add-ons for \(orgName)..."
             isLoading = true
         }
 
@@ -2021,18 +2008,18 @@ struct ContentView: View {
             addonsPublisher = cleverCloudSDK.getUserAddons()
         }
 
-        addonsPublisher
+        addonsLoadCancellable = addonsPublisher
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
                     if !silent {
                         isLoading = false
                         if case .failure(let error) = completion {
-                            addonError = error.localizedDescription
-                            errorMessage = "getAddons failed for \(orgName): \(error.localizedDescription)"
-                        } else {
-                            errorMessage = "✅ Add-ons loaded successfully for \(orgName)!"
+                            addonError = "Failed to load add-ons for \(orgName): \(error.localizedDescription)"
                         }
+                    }
+                    if case .finished = completion {
+                        onLoaded?()
                     }
                 },
                 receiveValue: { loadedAddons in
@@ -2041,7 +2028,6 @@ struct ContentView: View {
                     }
                 }
             )
-            .store(in: &cancellables)
     }
 
     /// Fetch the network groups for the selected organization. Network groups are owner-scoped via
@@ -2058,7 +2044,7 @@ struct ContentView: View {
             networkGroups = []
         }
 
-        cleverCloudSDK.networkGroups.getNetworkGroups(organizationId: orgId)
+        networkGroupsLoadCancellable = cleverCloudSDK.networkGroups.getNetworkGroups(organizationId: orgId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
@@ -2074,7 +2060,6 @@ struct ContentView: View {
                     if !silent { networkGroupError = nil }
                 }
             )
-            .store(in: &cancellables)
     }
 
     private func testGetAddonProviders() {
@@ -2159,40 +2144,50 @@ struct ContentView: View {
         // ContentView SDK subscriptions so old responses cannot race the new ones.
         appState?.cancelInFlight()
         cancellables.removeAll()
+        applicationsLoadCancellable = nil
+        addonsLoadCancellable = nil
+        networkGroupsLoadCancellable = nil
         // Stamp now so the next auto-tick (10s) does not pile a duplicate refresh on top.
         appState?.markDataRefreshed()
 
         // Set loading state with organization context
         isLoading = true
-        errorMessage = "🔄 Switching to \(organization.name)..."
+        isSwitchingOrg = true
 
-        // Store current selection for iPad to maintain after reload
+        // Store current selection for iPad to maintain after reload (captured before the
+        // org-switch onChange resets the detail column to the dashboard).
         let currentAppSelection = selectedApplicationForDetail
         let currentAddonSelection = selectedAddonForDetail
         let currentDetailView = selectedDetailView
 
         // Small delay for better UX (visual feedback)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            // Auto-load applications for the new organization, then statuses once apps are in
+            // Auto-load applications for the new organization, then statuses once apps are in.
+            // Selection reconciliation runs from the load completion (not a fixed timer) so it
+            // always sees the actually-loaded list.
             testGetApplications {
                 appState?.refreshApplicationStatuses()
+                if isIpad, currentDetailView == .applicationDetail {
+                    maintainSelectionAfterDataReload(
+                        previousApp: currentAppSelection,
+                        previousAddon: nil,
+                        previousDetailView: .applicationDetail
+                    )
+                }
             }
 
             // Auto-load add-ons for the new organization (after applications)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                testGetAddons()
-                testGetNetworkGroups()
-
-                // On iPad, try to maintain the previous selection after data reload
-                if isIpad {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                testGetAddons {
+                    if isIpad, currentDetailView == .addonDetail {
                         maintainSelectionAfterDataReload(
-                            previousApp: currentAppSelection,
+                            previousApp: nil,
                             previousAddon: currentAddonSelection,
-                            previousDetailView: currentDetailView
+                            previousDetailView: .addonDetail
                         )
                     }
                 }
+                testGetNetworkGroups()
             }
         }
     }

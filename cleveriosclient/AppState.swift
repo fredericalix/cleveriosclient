@@ -45,8 +45,10 @@ final class AppState {
     private var cancellables = Set<AnyCancellable>()
     /// Long-lived subscriptions to the events service streams. Cleared only by stopPolling().
     private var eventsCancellables = Set<AnyCancellable>()
-    /// Per-app status fetch subscriptions. Cleared by cancelInFlight() on org switch.
-    private var statusRequestCancellables = Set<AnyCancellable>()
+    /// In-flight status fetch pipelines, keyed by UUID and removed when each pipeline completes —
+    /// a plain Set would accumulate thousands of finished sinks per hour from the periodic refresh.
+    /// Cleared by cancelInFlight() on org switch.
+    private var statusRequestCancellables: [UUID: AnyCancellable] = [:]
     private var pollingTimer: Timer?
     private var dataRefreshTimer: Timer?
 
@@ -212,7 +214,15 @@ final class AppState {
 
         pollingTimer = Timer.scheduledTimer(withTimeInterval: pollingInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.refreshApplicationStatuses(forced: false)
+                guard let self else { return }
+                // The WebSocket event stream is the primary source of status changes; this poll is
+                // only a reconciliation fallback. While the stream is live, stretch the N-requests-
+                // per-app fan-out from every 15s to every 60s (~4× fewer API calls when idle).
+                let effectiveInterval = self.isPollingActive ? 60.0 : self.pollingInterval
+                guard Date().timeIntervalSince(self.lastStatusRefreshAt) >= effectiveInterval - 0.5 else {
+                    return
+                }
+                self.refreshApplicationStatuses(forced: false)
             }
         }
 
@@ -258,7 +268,7 @@ final class AppState {
     /// `applicationStatuses` after the user has moved on.
     func cancelInFlight() {
         guard !statusRequestCancellables.isEmpty else { return }
-        debugLog("ℹ️ 🧹 Cancelling \(statusRequestCancellables.count) in-flight status requests")
+        debugLog("ℹ️ 🧹 Cancelling \(statusRequestCancellables.count) in-flight status batches")
         statusRequestCancellables.removeAll()
         applicationStatuses.removeAll()
     }
@@ -298,39 +308,39 @@ final class AppState {
         statusRequestsIssued += apps.count
         #endif
 
-        for (index, app) in apps.enumerated() {
-            let appId = app.id
-            let instancesPublisher: AnyPublisher<[CCApplicationInstance], CCError>
-            if let orgId = requestOrgId, CCOrganization.isOrganizationId(orgId) {
-                instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId, organizationId: orgId)
-            } else {
-                instancesPublisher = sdk.applications.getApplicationInstances(applicationId: appId)
+        // One pipeline per batch, bounded to 4 concurrent /instances requests. The previous
+        // per-app `.delay(index * 0.2s)` was a no-op stagger (Combine's delay postpones output
+        // delivery, not the request) that silently ate into the 10s `.timeout` budget — apps past
+        // index ~49 could never receive a status.
+        let key = UUID()
+        statusRequestCancellables[key] = Publishers.Sequence(sequence: apps)
+            .flatMap(maxPublishers: .max(4)) { (app: CCApplication) -> AnyPublisher<(String, String), Never> in
+                let instancesPublisher: AnyPublisher<[CCApplicationInstance], CCError>
+                if let orgId = requestOrgId, CCOrganization.isOrganizationId(orgId) {
+                    instancesPublisher = sdk.applications.getApplicationInstances(applicationId: app.id, organizationId: orgId)
+                } else {
+                    instancesPublisher = sdk.applications.getApplicationInstances(applicationId: app.id)
+                }
+                return instancesPublisher
+                    .retry(1)
+                    .timeout(.seconds(10), scheduler: DispatchQueue.main)
+                    .map { instances in (app.id, ApplicationStatus.compute(from: instances).description) }
+                    .catch { _ in Just((app.id, "Error")) }
+                    .eraseToAnyPublisher()
             }
-
-            let delay = Double(index) * 0.2
-            instancesPublisher
-                .delay(for: .milliseconds(Int(delay * 1000)), scheduler: DispatchQueue.main)
-                .retry(1)
-                .timeout(.seconds(10), scheduler: DispatchQueue.main)
-                .receive(on: DispatchQueue.main)
-                .sink(
-                    receiveCompletion: { [weak self] completion in
-                        guard let self else { return }
-                        let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
-                        guard liveOrgId == requestOrgId else { return }
-                        if case .failure = completion {
-                            self.applicationStatuses[appId] = "Error"
-                        }
-                    },
-                    receiveValue: { [weak self] instances in
-                        guard let self else { return }
-                        let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
-                        guard liveOrgId == requestOrgId else { return }
-                        self.applicationStatuses[appId] = ApplicationStatus.compute(from: instances).description
-                    }
-                )
-                .store(in: &statusRequestCancellables)
-        }
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] _ in
+                    // Prune the finished pipeline so the dictionary doesn't grow with every tick.
+                    self?.statusRequestCancellables[key] = nil
+                },
+                receiveValue: { [weak self] appId, status in
+                    guard let self else { return }
+                    let liveOrgId = self.organizationIdProvider?() ?? self.selectedOrganization?.id
+                    guard liveOrgId == requestOrgId else { return }
+                    self.applicationStatuses[appId] = status
+                }
+            )
     }
 
     private func handleConnectionStateChange(_ state: CCConnectionState) {

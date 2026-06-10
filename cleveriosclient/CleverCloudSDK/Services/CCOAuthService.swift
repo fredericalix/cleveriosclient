@@ -126,11 +126,8 @@ final class CCOAuthService: NSObject {
             return
         }
         
-        if configuration.enableDebugLogging {
-            debugLog("🔐 Opening console URL: \(consoleURL)")
-        }
-        
-        debugLog("ℹ️ 🌐 Console URL built [url=\(consoleURL.absoluteString)]")
+        // The console URL carries the cli_token as a query parameter — never log it in full.
+        debugLog("ℹ️ 🌐 Console URL built [host=\(consoleURL.host ?? "?"), path=\(consoleURL.path)]")
         
         // 3. Ouvrir Safari pour l'authentification
         openSafariForAuthentication(url: consoleURL)
@@ -165,16 +162,17 @@ final class CCOAuthService: NSObject {
     
     /// Ouvre Safari pour l'authentification
     private func openSafariForAuthentication(url: URL) {
-        debugLog("ℹ️ 🌐 Attempting to open Safari for authentication [url=\(url.absoluteString)]")
+        // The URL carries the cli_token as a query parameter — never log it in full.
+        debugLog("ℹ️ 🌐 Attempting to open Safari for authentication [host=\(url.host ?? "?"), path=\(url.path)]")
         
-        // Configure Safari with ephemeral session to avoid cross-site tracking issues
         let safariConfig = SFSafariViewController.Configuration()
         safariConfig.entersReaderIfAvailable = false
         safariConfig.barCollapsingEnabled = false
-        
-        // IMPORTANT: Use ephemeral session to bypass cross-site tracking prevention
-        // This creates a fresh session that doesn't share cookies with Safari
-        // Helps users who have "Prevent Cross-Site Tracking" enabled
+
+        // NOTE: SFSafariViewController has no ephemeral mode — it shares the persistent Safari
+        // cookie store, so the Clever Cloud console session survives our logout. Switching to
+        // ASWebAuthenticationSession(prefersEphemeralWebBrowserSession: true) is tracked in the
+        // audit backlog (login-flow rework, needs device testing).
         #if swift(>=5.5)
         if #available(iOS 16.0, *) {
             safariConfig.activityButton = .none
@@ -220,7 +218,9 @@ final class CCOAuthService: NSObject {
         
         pollingTask = Task {
             var attempts = 0
-            
+            var consecutiveFailures = 0
+            let maxConsecutiveFailures = 5
+
             while attempts < CLIAuth.maxPollingAttempts && !Task.isCancelled {
                 attempts += 1
                 
@@ -240,16 +240,19 @@ final class CCOAuthService: NSObject {
                         }
                         return
                     }
+                    consecutiveFailures = 0
                 } catch {
-                    if configuration.enableDebugLogging {
-                        debugLog("🔐 Polling error: \(error.localizedDescription)")
-                    }
-                    
-                    debugLog("❌ ❌ Polling error [attempt=\(attempts), error=\(error.localizedDescription), errorType=\(type(of: error))]")
-                    
-                    // Si c'est pas une 404, c'est une vraie erreur
-                    if !error.localizedDescription.contains("404") {
-                        debugLog("❌ ❌ Non-404 error, stopping polling [error=\(error.localizedDescription)]")
+                    consecutiveFailures += 1
+                    debugLog("❌ ❌ Polling error [attempt=\(attempts), error=\(error.localizedDescription), errorType=\(type(of: error)), consecutiveFailures=\(consecutiveFailures)]")
+
+                    // A 4xx (other than 404, which returns nil above) means the request itself is
+                    // wrong and won't resolve by retrying. Everything else — URLError on a Wi-Fi/
+                    // cellular handoff, a transient 5xx, a one-off decode blip — must NOT abort the
+                    // 2-minute window while the user is busy authenticating in Safari.
+                    let nsError = error as NSError
+                    let isDefinitiveClientError = nsError.domain == "CCOAuthService" && (400...499).contains(nsError.code) && nsError.code != 404
+                    if isDefinitiveClientError || consecutiveFailures >= maxConsecutiveFailures {
+                        debugLog("❌ ❌ Stopping polling [definitive=\(isDefinitiveClientError), consecutiveFailures=\(consecutiveFailures)]")
                         await MainActor.run {
                             handleAuthenticationError("Network error: \(error.localizedDescription)")
                         }
@@ -297,11 +300,8 @@ final class CCOAuthService: NSObject {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
-        if configuration.enableDebugLogging {
-            debugLog("🔐 Polling URL: \(url)")
-        }
-        
-        debugLog("🔍 🌐 Making polling request [url=\(url.absoluteString), method=GET]")
+        // The polling URL carries the cli_token as a query parameter — never log it in full.
+        debugLog("🔍 🌐 Making polling request [path=\(components.path), method=GET]")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
@@ -323,9 +323,8 @@ final class CCOAuthService: NSObject {
         }
         
         if httpResponse.statusCode != 200 {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            debugLog("❌ ❌ Polling failed [statusCode=\(httpResponse.statusCode), errorMessage=\(errorMessage), responseBody=\(String(data: data, encoding: .utf8) ?? "Unable to decode")]")
-            throw NSError(domain: "CCOAuthService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+            debugLog("❌ ❌ Polling failed [statusCode=\(httpResponse.statusCode), bodySize=\(data.count)]")
+            throw NSError(domain: "CCOAuthService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
         }
         
         // Parser la réponse JSON
@@ -343,11 +342,10 @@ final class CCOAuthService: NSObject {
                 secret: tokenResponse.secret
             )
         } catch {
-            if configuration.enableDebugLogging {
-                debugLog("🔐 JSON parsing error: \(error)")
-                debugLog("🔐 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
-            }
-            debugLog("❌ ❌ Failed to decode token response [error=\(error.localizedDescription), responseBody=\(String(data: data, encoding: .utf8) ?? "Unable to decode"), dataSize=\(data.count)]")
+            // NEVER log this body: a 200 from /self/cli_tokens contains {token, secret} — the live
+            // OAuth credentials. On decode drift, log only the shape, not the content.
+            let topLevelKeys = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?.keys.sorted() ?? []
+            debugLog("❌ ❌ Failed to decode token response [error=\(error.localizedDescription), topLevelKeys=\(topLevelKeys), dataSize=\(data.count)]")
             throw error
         }
     }

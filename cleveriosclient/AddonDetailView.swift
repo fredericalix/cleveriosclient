@@ -10,6 +10,7 @@ struct AddonDetailView: View {
     // MARK: - iPad Detection
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
+    @Environment(\.dismiss) private var dismiss
     
     // Computed property to determine if we're on iPad
     private var isIpad: Bool {
@@ -1066,12 +1067,24 @@ struct AddonDetailView: View {
             .sorted(by: { $0.key < $1.key })
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: "\n")
-        
-        UIPasteboard.general.string = envString
-        
+
+        copySensitiveValue(envString)
+
         // Show feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
+    }
+
+    /// Add-on env vars are credentials (connection strings, passwords) — auto-expire them from the
+    /// clipboard and keep them off Universal Clipboard, mirroring WireGuardConfigView's copy button.
+    private func copySensitiveValue(_ value: String) {
+        UIPasteboard.general.setItems(
+            [["public.utf8-plain-text": value]],
+            options: [
+                .expirationDate: Date().addingTimeInterval(120),
+                .localOnly: true
+            ]
+        )
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -1103,19 +1116,17 @@ struct AddonDetailView: View {
                             errorMessage = nil
                         }
                     } else {
-                        // Navigate back after successful destruction
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            // Send notification to parent to refresh and dismiss
-                            NotificationCenter.default.post(
-                                name: .addonDestroyed,
-                                object: addon.id
-                            )
-                        }
+                        debugLog("✅ Add-on '\(addon.name)' destroyed successfully")
+                        // Both ContentView layouts observe this to drop the add-on from their
+                        // lists and reset any selection; dismissing pops the pushed detail on iPhone.
+                        NotificationCenter.default.post(
+                            name: .addonDestroyed,
+                            object: addon.id
+                        )
+                        dismiss()
                     }
                 },
-                receiveValue: { _ in
-                    debugLog("✅ Add-on '\(addon.name)' destroyed successfully")
-                }
+                receiveValue: { _ in }
             )
             .store(in: &cancellables)
         
@@ -1164,8 +1175,15 @@ struct EnvironmentVariableCard: View {
     }
     
     private func copyVariable() {
-        UIPasteboard.general.string = "\(key)=\(value)"
-        
+        // Add-on env vars are credentials — auto-expire and keep off Universal Clipboard.
+        UIPasteboard.general.setItems(
+            [["public.utf8-plain-text": "\(key)=\(value)"]],
+            options: [
+                .expirationDate: Date().addingTimeInterval(120),
+                .localOnly: true
+            ]
+        )
+
         withAnimation {
             isCopied = true
         }
