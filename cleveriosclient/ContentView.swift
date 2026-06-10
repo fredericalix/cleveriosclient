@@ -484,8 +484,12 @@ struct ContentView: View {
                     }
 
                     Section {
-                        if filteredNetworkGroups.isEmpty {
-                            Text(networkGroupError ?? "No network groups")
+                        if let networkGroupError {
+                            Text(networkGroupError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        } else if filteredNetworkGroups.isEmpty {
+                            Text("No network groups")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         } else {

@@ -1,21 +1,19 @@
 import Foundation
 import Combine
 
+/// Response body of `POST .../external-peers`: `{"peerId":"…"}`.
+fileprivate struct CCCreatedExternalPeer: Codable {
+    let peerId: String
+}
+
 // MARK: - CCNetworkGroupService
-/// Service for managing Clever Cloud Network Groups - the revolutionary networking feature
-/// TEMPORARILY DISABLED: All methods return "feature disabled" errors until Clever Cloud stabilizes this feature
+/// Service for managing Clever Cloud Network Groups (v4 API).
+/// Driven live from the app UI since 2026-06; endpoints/models are validated against the real API
+/// and decoding is kept tolerant (optionals + `.unknown` fallbacks) to survive shape drift.
 public class CCNetworkGroupService {
 
     // MARK: - Properties
     private let httpClient: CCHTTPClient
-
-    /// Flag to disable Network Groups functionality temporarily.
-    /// Enabled 2026-06: the v4 Network Groups API is being driven from the app UI. Endpoints/models
-    /// are validated against the live API; decoding is kept tolerant (optionals) to survive shape drift.
-    private let isNetworkGroupsEnabled = true
-
-    /// Error returned when Network Groups are disabled
-    private let featureDisabledError = CCError.invalidParameters("Network Groups feature is temporarily disabled. Please wait for Clever Cloud to stabilize this feature.")
 
     // MARK: - Initialization
     public init(httpClient: CCHTTPClient) {
@@ -28,9 +26,6 @@ public class CCNetworkGroupService {
     /// - Parameter organizationId: Organization ID
     /// - Returns: Publisher emitting array of network groups or error
     public func getNetworkGroups(organizationId: String) -> AnyPublisher<[CCNetworkGroup], CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups", apiVersion: .v4)
     }
     
@@ -40,9 +35,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting network group or error
     public func getNetworkGroup(organizationId: String, networkGroupId: String) -> AnyPublisher<CCNetworkGroup, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", apiVersion: .v4)
     }
     
@@ -52,42 +44,36 @@ public class CCNetworkGroupService {
     ///   - networkGroup: Network group creation data
     /// - Returns: Publisher emitting created network group or error
     public func createNetworkGroup(organizationId: String, networkGroup: CCNetworkGroupCreate) -> AnyPublisher<CCNetworkGroup, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
-        // First create the network group (expects empty response)
-        let createRequest = httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups", body: networkGroup, apiVersion: .v4)
-        
-        // Then fetch all network groups to find the newly created one
-        return createRequest
-            .flatMap { _ -> AnyPublisher<[CCNetworkGroup], CCError> in
-                // Small delay to allow the API to process the creation
-                return Just(())
-                    .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
-                    .setFailureType(to: CCError.self)
-                    .flatMap { _ in
-                        self.getNetworkGroups(organizationId: organizationId)
+        // The v4 NG payload has no createdAt/timestamp, so we can't pick "the newest" by date.
+        // Snapshot the existing ids first, then after creating, return the id that wasn't there before.
+        let priorIds = getNetworkGroups(organizationId: organizationId)
+            .map { Set($0.map { $0.id }) }
+            .catch { _ in Just(Set<String>()).setFailureType(to: CCError.self) }
+            .eraseToAnyPublisher()
+
+        return priorIds
+            .flatMap { existingIds -> AnyPublisher<CCNetworkGroup, CCError> in
+                self.httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups", body: networkGroup, apiVersion: .v4)
+                    .flatMap { _ -> AnyPublisher<[CCNetworkGroup], CCError> in
+                        // Small delay to allow the API to process the creation.
+                        Just(())
+                            .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
+                            .setFailureType(to: CCError.self)
+                            .flatMap { _ in self.getNetworkGroups(organizationId: organizationId) }
+                            .eraseToAnyPublisher()
                     }
+                    .tryMap { networkGroups -> CCNetworkGroup in
+                        // Prefer the id that did not exist before the create; fall back to a name match.
+                        if let created = networkGroups.first(where: { !existingIds.contains($0.id) && $0.name == networkGroup.name }) {
+                            return created
+                        }
+                        if let byName = networkGroups.first(where: { $0.name == networkGroup.name }) {
+                            return byName
+                        }
+                        throw CCError.invalidParameters("Failed to retrieve created network group")
+                    }
+                    .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
                     .eraseToAnyPublisher()
-            }
-            .map { networkGroups in
-                // Find the network group by name (most recent with matching name)
-                return networkGroups
-                    .filter { $0.name == networkGroup.name }
-                    .max { $0.createdAt ?? Date.distantPast < $1.createdAt ?? Date.distantPast }
-            }
-            .tryMap { optionalNetworkGroup in
-                guard let createdNetworkGroup = optionalNetworkGroup else {
-                    throw CCError.invalidParameters("Failed to retrieve created network group")
-                }
-                return createdNetworkGroup
-            }
-            .mapError { error in
-                if let ccError = error as? CCError {
-                    return ccError
-                } else {
-                    return CCError.unknown(error)
-                }
             }
             .eraseToAnyPublisher()
     }
@@ -99,9 +85,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupUpdate: Network group update data
     /// - Returns: Publisher emitting updated network group or error
     public func updateNetworkGroup(organizationId: String, networkGroupId: String, networkGroupUpdate: CCNetworkGroupUpdate) -> AnyPublisher<CCNetworkGroup, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.put("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", body: networkGroupUpdate, apiVersion: .v4)
     }
     
@@ -111,9 +94,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID to delete
     /// - Returns: Publisher emitting void response or error
     public func deleteNetworkGroup(organizationId: String, networkGroupId: String) -> AnyPublisher<Void, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)", apiVersion: .v4)
     }
     
@@ -125,9 +105,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting array of members or error
     public func getNetworkGroupMembers(organizationId: String, networkGroupId: String) -> AnyPublisher<[CCNetworkGroupMember], CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", apiVersion: .v4)
     }
     
@@ -165,9 +142,6 @@ public class CCNetworkGroupService {
     ///   - memberId: Member ID to remove
     /// - Returns: Publisher emitting void response or error
     public func removeNetworkGroupMember(organizationId: String, networkGroupId: String, memberId: String) -> AnyPublisher<Void, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members/\(memberId)", apiVersion: .v4)
     }
     
@@ -179,9 +153,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting array of peers or error
     public func getNetworkGroupPeers(organizationId: String, networkGroupId: String) -> AnyPublisher<[CCNetworkGroupPeer], CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers", apiVersion: .v4)
     }
     
@@ -207,16 +178,6 @@ public class CCNetworkGroupService {
     
     // MARK: - External Peers Management
     
-    /// Add an external peer to a network group
-    /// - Parameters:
-    ///   - organizationId: Organization ID
-    ///   - networkGroupId: Network group ID
-    ///   - externalPeer: External peer creation data
-    /// - Returns: Publisher emitting added external peer or error
-    public func addNetworkGroupExternalPeer(organizationId: String, networkGroupId: String, externalPeer: CCNetworkGroupExternalPeerCreate) -> AnyPublisher<CCNetworkGroupPeer, CCError> {
-        return httpClient.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: externalPeer, apiVersion: .v4)
-    }
-    
     /// Remove an external peer from a network group
     /// - Parameters:
     ///   - organizationId: Organization ID
@@ -236,9 +197,6 @@ public class CCNetworkGroupService {
     ///   - peerId: Peer ID
     /// - Returns: Publisher emitting WireGuard configuration or error
     public func getWireGuardConfiguration(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<CCWireGuardConfiguration, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration", apiVersion: .v4)
     }
     
@@ -249,9 +207,6 @@ public class CCNetworkGroupService {
     ///   - peerId: Peer ID
     /// - Returns: Publisher emitting configuration file content or error
     public func getWireGuardConfigurationStream(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<String, CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         return httpClient.get("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration/stream", apiVersion: .v4)
     }
 
@@ -260,7 +215,8 @@ public class CCNetworkGroupService {
     /// The returned `[Interface] PrivateKey` is typically empty/placeholder for an externally-keyed
     /// peer; the caller injects the locally-generated private key before presenting/importing.
     public func getWireGuardConfigurationText(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<String, CCError> {
-        return httpClient.getRawString("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration", apiVersion: .v4)
+        // The endpoint serves text/plain — a JSON `Accept` header makes it 406. Ask for text/plain.
+        return httpClient.getRawString("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/peers/\(peerId)/wireguard/configuration", apiVersion: .v4, accept: "text/plain")
     }
     
     // MARK: - Real-time Network Group Monitoring
@@ -294,7 +250,11 @@ public class CCNetworkGroupService {
 
     /// Create an external WireGuard peer (e.g. a laptop/phone). Two-step, mirroring clever-tools:
     /// (1) create an EXTERNAL parent member, (2) create the peer with `peerRole=CLIENT` + that parent.
-    /// The external-peers POST returns no usable body, so we re-fetch the peers and match on publicKey.
+    ///
+    /// The external-peers POST returns `{"peerId":"…"}` — the authoritative id of the new peer — so we
+    /// resolve the peer by that id (not by matching on publicKey, which could collide). A short retry
+    /// absorbs the v4 eventual-consistency window before the peer is listable. If the peer POST fails,
+    /// the already-created EXTERNAL parent member is rolled back (best-effort) so no orphan is left.
     public func createExternalPeer(organizationId: String, networkGroupId: String, publicKey: String, label: String) -> AnyPublisher<CCNetworkGroupPeer, CCError> {
         let parentId = "external_\(UUID().uuidString)"
         let parentMember = CCNetworkGroupMemberCreate(
@@ -307,25 +267,35 @@ public class CCNetworkGroupService {
         let client = httpClient
 
         return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: parentMember)
-            .flatMap { _ -> AnyPublisher<Void, CCError> in
-                client.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+            .flatMap { _ -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                // Capture the authoritative peerId from the POST body; roll back the parent member on failure.
+                client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+                    .catch { error -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                        client.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members/\(parentId)", apiVersion: .v4)
+                            .catch { _ in Just(()).setFailureType(to: CCError.self) } // ignore cleanup failure
+                            .flatMap { _ in Fail<CCCreatedExternalPeer, CCError>(error: error) }
+                            .eraseToAnyPublisher()
+                    }
+                    .eraseToAnyPublisher()
             }
-            .flatMap { [weak self] _ -> AnyPublisher<[CCNetworkGroupPeer], CCError> in
+            .flatMap { [weak self] created -> AnyPublisher<CCNetworkGroupPeer, CCError> in
                 guard let self else {
                     return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
                 }
-                // Small delay so the freshly-created peer shows up in the list.
+                // Resolve by the authoritative id; retry to absorb the eventual-consistency window.
                 return Just(())
-                    .delay(for: .milliseconds(800), scheduler: DispatchQueue.main)
+                    .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
                     .setFailureType(to: CCError.self)
                     .flatMap { _ in self.getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId) }
+                    .tryMap { peers -> CCNetworkGroupPeer in
+                        guard let peer = peers.first(where: { $0.id == created.peerId }) else {
+                            throw CCError.resourceNotFound
+                        }
+                        return peer
+                    }
+                    .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
+                    .retry(2)
                     .eraseToAnyPublisher()
-            }
-            .tryMap { peers -> CCNetworkGroupPeer in
-                guard let peer = peers.first(where: { $0.publicKey == publicKey }) else {
-                    throw CCError.invalidParameters("External peer created but not found in the peers list")
-                }
-                return peer
             }
             .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
             .eraseToAnyPublisher()
@@ -353,9 +323,6 @@ public class CCNetworkGroupService {
     ///   - networkGroupId: Network group ID
     /// - Returns: Publisher emitting tuple with all network group data or error
     public func getCompleteNetworkGroupData(organizationId: String, networkGroupId: String) -> AnyPublisher<(CCNetworkGroup, [CCNetworkGroupMember], [CCNetworkGroupPeer]), CCError> {
-        guard isNetworkGroupsEnabled else {
-            return Fail(error: featureDisabledError).eraseToAnyPublisher()
-        }
         let networkGroupPublisher = getNetworkGroup(organizationId: organizationId, networkGroupId: networkGroupId)
         let membersPublisher = getNetworkGroupMembers(organizationId: organizationId, networkGroupId: networkGroupId)
         let peersPublisher = getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId)

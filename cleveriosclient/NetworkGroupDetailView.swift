@@ -110,7 +110,7 @@ struct NetworkGroupDetailView: View {
             if let cidr = networkGroup.cidr { infoRow("Network", cidr, monospaced: true) }
             if let region = networkGroup.region { infoRow("Region", region.uppercased()) }
             if let status = networkGroup.status { infoRow("Status", status.capitalized) }
-            infoRow("Members", "\(members.count)")
+            infoRow("Members", "\(appAndAddonMembers.count)")
             infoRow("Peers", "\(peers.count)")
         }
         .padding()
@@ -152,6 +152,13 @@ struct NetworkGroupDetailView: View {
 
     // MARK: - Members tab
 
+    /// App/add-on members only. EXTERNAL members are the parent constructs auto-created for external
+    /// WireGuard devices — the device itself is shown under the Peers tab, so we hide its parent here
+    /// to avoid a confusing duplicate row (and a destructive button that would orphan the peer).
+    private var appAndAddonMembers: [CCNetworkGroupMember] {
+        members.filter { $0.type != .external }
+    }
+
     private var membersTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -166,7 +173,7 @@ struct NetworkGroupDetailView: View {
                     .accessibilityLabel("Add member")
                 }
 
-                if members.isEmpty {
+                if appAndAddonMembers.isEmpty {
                     ContentUnavailableView(
                         "No members",
                         systemImage: "square.stack.3d.up",
@@ -174,7 +181,7 @@ struct NetworkGroupDetailView: View {
                     )
                     .frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else {
-                    ForEach(members) { member in
+                    ForEach(appAndAddonMembers) { member in
                         memberRow(member)
                     }
                 }
@@ -336,8 +343,19 @@ struct NetworkGroupDetailView: View {
 
     private func removeExternalPeer(_ peer: CCNetworkGroupPeer) {
         guard let orgId = organizationId else { return }
-        cleverCloudSDK.networkGroups
-            .removeNetworkGroupExternalPeer(organizationId: orgId, networkGroupId: networkGroup.id, peerId: peer.id)
+        let sdk = cleverCloudSDK.networkGroups
+        let ngId = networkGroup.id
+        // An external peer is paired with an `external_<uuid>` parent member (created together in
+        // createExternalPeer). Delete the peer, then best-effort delete that parent so no orphan is left.
+        sdk.removeNetworkGroupExternalPeer(organizationId: orgId, networkGroupId: ngId, peerId: peer.id)
+            .flatMap { _ -> AnyPublisher<Void, CCError> in
+                if let parent = peer.parentMember, parent.hasPrefix("external_") {
+                    return sdk.removeNetworkGroupMember(organizationId: orgId, networkGroupId: ngId, memberId: parent)
+                        .catch { _ in Just(()).setFailureType(to: CCError.self) } // parent may be gone / cascaded
+                        .eraseToAnyPublisher()
+                }
+                return Just(()).setFailureType(to: CCError.self).eraseToAnyPublisher()
+            }
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in

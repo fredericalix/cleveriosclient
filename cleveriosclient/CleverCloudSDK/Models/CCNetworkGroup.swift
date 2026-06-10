@@ -115,7 +115,13 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
     
     /// Display name with type icon
     public var displayNameWithIcon: String {
-        let icon = type == .application ? "📱" : "🔧"
+        let icon: String
+        switch type {
+        case .application: icon = "📱"
+        case .addon: icon = "🔧"
+        case .external: icon = "💻"
+        case .unknown: icon = "❔"
+        }
         return "\(icon) \(name)"
     }
     
@@ -175,26 +181,46 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
 
 // MARK: - CCNetworkGroupMemberType
 
-/// Type of network group member
+/// Type of network group member.
+///
+/// The API uses `kind`, which can be `APPLICATION`, `ADDON`, or `EXTERNAL` (the parent member
+/// auto-created for an external WireGuard peer / "device"). Decoding is tolerant: any unrecognised
+/// value maps to `.unknown` instead of throwing, so a single unexpected `kind` can never break the
+/// whole members list.
 public enum CCNetworkGroupMemberType: String, Codable, CaseIterable {
     case application = "APPLICATION"
     case addon = "ADDON"
-    
+    case external = "EXTERNAL"
+    case unknown = "UNKNOWN"
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CCNetworkGroupMemberType(rawValue: raw.uppercased()) ?? .unknown
+    }
+
     public var displayName: String {
         switch self {
         case .application:
             return "Application"
         case .addon:
             return "Add-on"
+        case .external:
+            return "External device"
+        case .unknown:
+            return "Member"
         }
     }
-    
+
     public var icon: String {
         switch self {
         case .application:
             return "app.badge"
         case .addon:
             return "gear.badge"
+        case .external:
+            return "laptopcomputer"
+        case .unknown:
+            return "questionmark.circle"
         }
     }
 }

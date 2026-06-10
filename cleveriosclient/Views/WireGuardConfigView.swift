@@ -57,6 +57,9 @@ struct WireGuardConfigView: View {
     @State private var deviceName: String = "My device"
     @State private var phase: Phase = .idle
     @State private var configText: String = ""
+    /// Whether the assembled config contains a `[Peer]` block. A freshly-created peer in a network
+    /// group with no gateway yet comes back as `[Interface]`-only, which imports but routes nowhere.
+    @State private var configHasPeer: Bool = false
     @State private var errorMessage: String?
     @State private var cancellables = Set<AnyCancellable>()
 
@@ -145,10 +148,27 @@ struct WireGuardConfigView: View {
     private var readyView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if !configHasPeer {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("No gateway peer yet", systemImage: "info.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.blue)
+                        Text("This network group has no gateway peer yet, so the configuration below has no “[Peer]” section and will not route traffic until one exists. You can still save this private key now (it is shown only once); re-create the peer once a gateway is available to get a complete, connectable configuration.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                }
+
                 Label("Private key shown once", systemImage: "exclamationmark.shield.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.orange)
-                Text("This configuration contains a private key that is not stored anywhere else. Import it now (scan the QR from the WireGuard app, or copy the text). If you lose it, delete this peer and create a new one.")
+                Text(configHasPeer
+                     ? "This configuration contains a private key that is not stored anywhere else. Import it now (scan the QR from the WireGuard app, or copy the text). If you lose it, delete this peer and create a new one."
+                     : "This configuration contains a private key that is not stored anywhere else. Save it now (scan the QR or copy the text) — it cannot be shown again. If you lose it, delete this peer and create a new one.")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -174,7 +194,11 @@ struct WireGuardConfigView: View {
                     .cornerRadius(8)
 
                 Button {
-                    UIPasteboard.general.string = configText
+                    // The config contains a private key — auto-expire it from the system-wide clipboard.
+                    UIPasteboard.general.setItems(
+                        [["public.utf8-plain-text": configText]],
+                        options: [.expirationDate: Date().addingTimeInterval(120)]
+                    )
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
                 } label: {
@@ -223,7 +247,9 @@ struct WireGuardConfigView: View {
                     }
                 },
                 receiveValue: { rawConfig in
-                    configText = Self.injectingPrivateKey(keys.privateKeyBase64, into: rawConfig)
+                    let assembled = Self.injectingPrivateKey(keys.privateKeyBase64, into: rawConfig)
+                    configText = assembled
+                    configHasPeer = assembled.range(of: "[Peer]", options: .caseInsensitive) != nil
                     phase = .ready
                     onPeerCreated?()
                 }

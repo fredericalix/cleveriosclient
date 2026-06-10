@@ -159,12 +159,15 @@ public final class CCHTTPClient: ObservableObject {
     /// - Parameters:
     ///   - endpoint: API endpoint
     ///   - apiVersion: API version
+    ///   - accept: Value for the `Accept` header. Defaults to `application/json`; pass `text/plain`
+    ///     for plain-text endpoints (e.g. WireGuard `.conf`) that 406 on a JSON Accept.
     /// - Returns: Publisher with raw string response
     public func getRawString(
         _ endpoint: String,
-        apiVersion: APIVersion = .v2
+        apiVersion: APIVersion = .v2,
+        accept: String = "application/json"
     ) -> AnyPublisher<String, CCError> {
-        return requestRaw(method: .GET, endpoint: endpoint, apiVersion: apiVersion)
+        return requestRaw(method: .GET, endpoint: endpoint, apiVersion: apiVersion, accept: accept)
             .tryMap { data in
                 guard let string = String(data: data, encoding: .utf8) else {
                     throw CCError.parsingError(NSError(domain: "StringConversion", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to convert data to UTF-8 string"]))
@@ -197,11 +200,14 @@ public final class CCHTTPClient: ObservableObject {
     ///   - method: HTTP method
     ///   - endpoint: API endpoint
     ///   - apiVersion: API version
+    ///   - accept: Value for the `Accept` header. Defaults to `application/json`; pass `text/plain`
+    ///     for endpoints that serve plain text (e.g. WireGuard `.conf`), which 406 on a JSON Accept.
     /// - Returns: Publisher with raw data response
     public func requestRaw(
         method: HTTPMethod,
         endpoint: String,
-        apiVersion: APIVersion
+        apiVersion: APIVersion,
+        accept: String = "application/json"
     ) -> AnyPublisher<Data, CCError> {
         
         // Build URL
@@ -228,7 +234,7 @@ public final class CCHTTPClient: ObservableObject {
         }
 
         request.httpMethod = method.rawValue
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
 
         // Add OAuth 1.0a authentication headers
         do {
@@ -258,9 +264,7 @@ public final class CCHTTPClient: ObservableObject {
                 if self.configuration.enableDebugLogging {
                     debugLog("🔍 📡 HTTP Response [statusCode=\(httpResponse.statusCode), url=\(httpResponse.url?.absoluteString ?? "unknown")]")
 
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        debugLog("🔍 📦 Raw response: \(responseString.prefix(500))")
-                    }
+                    debugLog("🔍 📦 Raw response: \(redactedBodyPreview(data))")
 
                 }
                 
@@ -987,6 +991,13 @@ fileprivate func redactSecretsForLog(_ text: String) -> String {
     result = result.replacingOccurrences(
         of: uriCreds,
         with: "$1***:***@",
+        options: [.regularExpression]
+    )
+    // 3. Mask INI/key=value secret assignments (e.g. a WireGuard .conf): "PrivateKey = <base64>" -> "PrivateKey = ***".
+    let iniSecret = "(?im)^(\\s*(?:private[_-]?key|preshared[_-]?key|password|secret|token)\\s*=\\s*).+$"
+    result = result.replacingOccurrences(
+        of: iniSecret,
+        with: "$1***",
         options: [.regularExpression]
     )
     return result

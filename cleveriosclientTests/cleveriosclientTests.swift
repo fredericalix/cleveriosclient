@@ -220,3 +220,38 @@ struct NetworkGroupCreateEncodingTests {
         #expect(obj["kind"] as? String == "APPLICATION")
     }
 }
+
+// MARK: - Network Groups: member-kind decoding is tolerant (regression: EXTERNAL crashed the whole list)
+
+@Suite("CCNetworkGroupMember decoding")
+struct NetworkGroupMemberDecodingTests {
+
+    private func decodeMembers(_ json: String) throws -> [CCNetworkGroupMember] {
+        try JSONDecoder().decode([CCNetworkGroupMember].self, from: Data(json.utf8))
+    }
+
+    @Test("EXTERNAL parent member (real /members payload) decodes without throwing")
+    func externalMemberDecodes() throws {
+        // Captured live: attaching a device creates an EXTERNAL "Parent of …" member. Before the fix,
+        // CCNetworkGroupMemberType had no EXTERNAL case and the whole array decode threw.
+        let json = #"[{"id":"external_ABC","label":"Parent of Moniphone","domainName":"external_ABC.m.ng_y.cc-ng.cloud","kind":"EXTERNAL"}]"#
+        let members = try decodeMembers(json)
+        #expect(members.count == 1)
+        #expect(members.first?.type == .external)
+        #expect(members.first?.resourceId == "external_ABC")
+    }
+
+    @Test("APPLICATION and ADDON kinds still decode to their cases")
+    func appAndAddonDecode() throws {
+        let json = #"[{"id":"app_1","label":"web","kind":"APPLICATION","domainName":"d"},{"id":"addon_1","label":"pg","kind":"ADDON","domainName":"d"}]"#
+        let members = try decodeMembers(json)
+        #expect(members.map(\.type) == [.application, .addon])
+    }
+
+    @Test("Unknown / future kind maps to .unknown instead of throwing")
+    func unknownKindIsTolerant() throws {
+        let json = #"[{"id":"x","label":"y","kind":"SOMETHING_NEW","domainName":"d"}]"#
+        let members = try decodeMembers(json)
+        #expect(members.first?.type == .unknown)
+    }
+}
