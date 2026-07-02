@@ -54,6 +54,9 @@ struct WireGuardConfigView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    /// Tunnel state lives in AppState (not sheet-local @State) so the connection and its status
+    /// observer survive dismissing this sheet — see `AppState.tunnel`.
+    @Environment(AppState.self) private var appState
 
     @State private var deviceName: String = "My device"
     @State private var phase: Phase = .idle
@@ -63,6 +66,9 @@ struct WireGuardConfigView: View {
     @State private var configHasPeer: Bool = false
     @State private var errorMessage: String?
     @State private var cancellables = Set<AnyCancellable>()
+
+    /// Phase 0 spike: drives the in-app WireGuard tunnel from the assembled config.
+    private var tunnel: CCTunnelManager { appState.tunnel }
 
     private enum Phase: Equatable {
         case idle          // waiting for the user to name the device and tap Generate
@@ -100,6 +106,7 @@ struct WireGuardConfigView: View {
                     Button("Close") { dismiss() }
                 }
             }
+            .task { await tunnel.load() }
         }
     }
 
@@ -223,6 +230,36 @@ struct WireGuardConfigView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+
+                if configHasPeer {
+                    Divider().padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("In-app tunnel (debug)", systemImage: "bolt.horizontal.circle")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Status: \(tunnel.status.label)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        HStack {
+                            Button {
+                                Task { await tunnel.connect(confString: configText, label: deviceName) }
+                            } label: {
+                                Label("Connect", systemImage: "link")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(tunnel.status == .connecting || tunnel.status == .connected)
+
+                            Button(role: .destructive) {
+                                tunnel.disconnect()
+                            } label: {
+                                Label("Disconnect", systemImage: "xmark")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(tunnel.status == .disconnected)
+                        }
+                    }
+                }
             }
             .padding()
         }

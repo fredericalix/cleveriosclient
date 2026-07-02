@@ -6,7 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C640ED612FF42F6800058A0D /* PacketTunnelExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C640ED562FF42F6700058A0D /* PacketTunnelExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C640ED682FF4333100058A0D /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C640ED582FF42F6700058A0D /* NetworkExtension.framework */; };
+		C640EE022FF4400000058A0D /* WireGuardKit in Frameworks */ = {isa = PBXBuildFile; productRef = C640EE012FF4400000058A0D /* WireGuardKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		C640ED5F2FF42F6800058A0D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C6A4F8AF2E01751500FAEC72 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C640ED552FF42F6700058A0D;
+			remoteInfo = PacketTunnelExtension;
+		};
 		C6A4F8C72E01751700FAEC72 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C6A4F8AF2E01751500FAEC72 /* Project object */;
@@ -23,13 +36,48 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		C640ED622FF42F6800058A0D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C640ED612FF42F6800058A0D /* PacketTunnelExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		C640ED562FF42F6700058A0D /* PacketTunnelExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PacketTunnelExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C640ED582FF42F6700058A0D /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		C640F1C52FF4711A00058A0D /* mycleverclient.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mycleverclient.entitlements; sourceTree = "<group>"; };
 		C6A4F8B72E01751500FAEC72 /* mycleverclient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mycleverclient.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6A4F8C62E01751700FAEC72 /* mycleverclientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mycleverclientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6A4F8D02E01751700FAEC72 /* mycleverclientUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mycleverclientUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C640ED652FF42F6800058A0D /* Exceptions for "PacketTunnelExtension" folder in "PacketTunnelExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C640ED552FF42F6700058A0D /* PacketTunnelExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		C640ED5A2FF42F6800058A0D /* PacketTunnelExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C640ED652FF42F6800058A0D /* Exceptions for "PacketTunnelExtension" folder in "PacketTunnelExtension" target */,
+			);
+			path = PacketTunnelExtension;
+			sourceTree = "<group>";
+		};
 		C6A4F8B92E01751500FAEC72 /* cleveriosclient */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = cleveriosclient;
@@ -48,6 +96,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C640ED532FF42F6700058A0D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C640ED682FF4333100058A0D /* NetworkExtension.framework in Frameworks */,
+				C640EE022FF4400000058A0D /* WireGuardKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C6A4F8B42E01751500FAEC72 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -72,12 +129,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C640ED572FF42F6700058A0D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C640ED582FF42F6700058A0D /* NetworkExtension.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		C6A4F8AE2E01751500FAEC72 = {
 			isa = PBXGroup;
 			children = (
+				C640F1C52FF4711A00058A0D /* mycleverclient.entitlements */,
 				C6A4F8B92E01751500FAEC72 /* cleveriosclient */,
 				C6A4F8C92E01751700FAEC72 /* cleveriosclientTests */,
 				C6A4F8D32E01751700FAEC72 /* cleveriosclientUITests */,
+				C640ED5A2FF42F6800058A0D /* PacketTunnelExtension */,
+				C640ED572FF42F6700058A0D /* Frameworks */,
 				C6A4F8B82E01751500FAEC72 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +156,7 @@
 				C6A4F8B72E01751500FAEC72 /* mycleverclient.app */,
 				C6A4F8C62E01751700FAEC72 /* mycleverclientTests.xctest */,
 				C6A4F8D02E01751700FAEC72 /* mycleverclientUITests.xctest */,
+				C640ED562FF42F6700058A0D /* PacketTunnelExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +164,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C640ED552FF42F6700058A0D /* PacketTunnelExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C640ED662FF42F6800058A0D /* Build configuration list for PBXNativeTarget "PacketTunnelExtension" */;
+			buildPhases = (
+				C640ED522FF42F6700058A0D /* Sources */,
+				C640ED532FF42F6700058A0D /* Frameworks */,
+				C640ED542FF42F6700058A0D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C640ED5A2FF42F6800058A0D /* PacketTunnelExtension */,
+			);
+			name = PacketTunnelExtension;
+			packageProductDependencies = (
+				C640EE012FF4400000058A0D /* WireGuardKit */,
+			);
+			productName = PacketTunnelExtension;
+			productReference = C640ED562FF42F6700058A0D /* PacketTunnelExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		C6A4F8B62E01751500FAEC72 /* mycleverclient */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C6A4F8DA2E01751700FAEC72 /* Build configuration list for PBXNativeTarget "mycleverclient" */;
@@ -102,10 +194,12 @@
 				C6A4F8B32E01751500FAEC72 /* Sources */,
 				C6A4F8B42E01751500FAEC72 /* Frameworks */,
 				C6A4F8B52E01751500FAEC72 /* Resources */,
+				C640ED622FF42F6800058A0D /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C640ED602FF42F6800058A0D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C6A4F8B92E01751500FAEC72 /* cleveriosclient */,
@@ -170,9 +264,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
+					C640ED552FF42F6700058A0D = {
+						CreatedOnToolsVersion = 26.6;
+					};
 					C6A4F8B62E01751500FAEC72 = {
 						CreatedOnToolsVersion = 16.4;
 					};
@@ -195,6 +292,9 @@
 			);
 			mainGroup = C6A4F8AE2E01751500FAEC72;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C640ED672FF430E400058A0D /* XCLocalSwiftPackageReference "Vendor/wireguard-apple" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C6A4F8B82E01751500FAEC72 /* Products */;
 			projectDirPath = "";
@@ -203,11 +303,19 @@
 				C6A4F8B62E01751500FAEC72 /* mycleverclient */,
 				C6A4F8C52E01751700FAEC72 /* mycleverclientTests */,
 				C6A4F8CF2E01751700FAEC72 /* mycleverclientUITests */,
+				C640ED552FF42F6700058A0D /* PacketTunnelExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C640ED542FF42F6700058A0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C6A4F8B52E01751500FAEC72 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -232,6 +340,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C640ED522FF42F6700058A0D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C6A4F8B32E01751500FAEC72 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +371,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C640ED602FF42F6800058A0D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C640ED552FF42F6700058A0D /* PacketTunnelExtension */;
+			targetProxy = C640ED5F2FF42F6800058A0D /* PBXContainerItemProxy */;
+		};
 		C6A4F8C82E01751700FAEC72 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C6A4F8B62E01751500FAEC72 /* mycleverclient */;
@@ -269,6 +389,92 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		C640ED632FF42F6800058A0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DS6BK4WLCX;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PacketTunnelExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PacketTunnelExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/wg-go/ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/wg-go/ios-sim",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fredalix.cciosclient.PacketTunnelExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C640ED642FF42F6800058A0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DS6BK4WLCX;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PacketTunnelExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PacketTunnelExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/wg-go/ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/wg-go/ios-sim",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fredalix.cciosclient.PacketTunnelExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		C6A4F8D82E01751700FAEC72 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -394,6 +600,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = mycleverclient.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2.31;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
@@ -432,6 +639,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = mycleverclient.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2.31;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
@@ -535,6 +743,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C640ED662FF42F6800058A0D /* Build configuration list for PBXNativeTarget "PacketTunnelExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C640ED632FF42F6800058A0D /* Debug */,
+				C640ED642FF42F6800058A0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		C6A4F8B22E01751500FAEC72 /* Build configuration list for PBXProject "mycleverclient" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -572,6 +789,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C640ED672FF430E400058A0D /* XCLocalSwiftPackageReference "Vendor/wireguard-apple" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Vendor/wireguard-apple";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C640EE012FF4400000058A0D /* WireGuardKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C640ED672FF430E400058A0D /* XCLocalSwiftPackageReference "Vendor/wireguard-apple" */;
+			productName = WireGuardKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C6A4F8AF2E01751500FAEC72 /* Project object */;
 }

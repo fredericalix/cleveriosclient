@@ -194,3 +194,10 @@ AuthKey_*.p8
 *.cer
 *.crt
 *.key 
+
+# Vendored WireGuard package — keep sources + prebuilt libs, drop build intermediates
+Vendor/wireguard-apple/.build/
+Vendor/wireguard-apple/.swiftpm/
+Vendor/wireguard-apple/Sources/WireGuardKitGo/.tmp*/
+Vendor/wireguard-apple/Sources/WireGuardKitGo/out*/
+Vendor/wireguard-apple/Sources/WireGuardKitGo/.cache/

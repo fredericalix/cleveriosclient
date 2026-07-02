@@ -40,6 +40,13 @@ final class AppState {
 
     let cleverCloudSDK: CleverCloudSDK
 
+    // MARK: - WireGuard Tunnel
+
+    /// Owns the Network Group tunnel lifecycle. Lives here (not in a sheet's @State) so the
+    /// connection state and its status observer survive sheet dismissal and view recreation —
+    /// the tunnel itself keeps running system-side either way.
+    let tunnel = CCTunnelManager()
+
     // MARK: - Private
 
     private var cancellables = Set<AnyCancellable>()
