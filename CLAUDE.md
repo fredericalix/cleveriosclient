@@ -80,7 +80,12 @@ Race-protection and debouncing:
 - `CCAddonService` - Add-on CRUD, providers, plans
 - `CCDeploymentService` - Deployment history, restart, redeploy
 - `CCEnvironmentService` - Environment variables, app config, domains
-- `CCNetworkGroupService` - Network groups, members, peers, WireGuard configs
+- `CCNetworkGroupService` - Network groups, members, peers, WireGuard configs. Gotchas learned against the live v4 API:
+  - `POST …/members` answers **202 Accepted (async)** — a member is not immediately referenceable. `createExternalPeer` polls the members list (`waitForNetworkGroupMember`, 1s interval / ~30 attempts, mirrors clever-tools `checkResource`) between the parent-member POST and the external-peers POST; POSTing the peer earlier makes the API 500.
+  - `CCNetworkGroupMember`'s decoder **remaps ids**: the raw API id lands in `resourceId`, `id` is `"member_<apiId>"` (SwiftUI uniqueness). Always match API ids against `resourceId`. (`CCNetworkGroupPeer.id` is NOT remapped.)
+  - External member ids are `external_<uuid>` with a **lowercase** UUID (matches clever-tools; the id is embedded in a DNS `domainName` and the API validates the format strictly).
+  - The member POST is wrapped in `retryingOnServerError` (2 retries, 2s pause, 5xx only): the v4 backend intermittently 500s on this POST while accepting the byte-identical body seconds later (reported to Clever Cloud 2026-07-13). Replaying the same member id is safe — the server upserts duplicates.
+- `CCTunnelManager` - Drives the in-app WireGuard tunnel via `NETunnelProviderManager` (one reusable VPN profile — iOS allows a single packet tunnel). The wg-quick conf (with private key) lives in the keychain (shared App Group `group.com.fredalix.cciosclient`), referenced from the profile via `passwordReference`. `providerConfiguration` persists `networkGroupId` + `peerId` so the per-NG VPN toggle knows which group the profile belongs to and so the profile can be torn down when its peer is deleted. Key methods: `connect(confString:label:networkGroupId:peerId:)`, `startSaved()` (restart from the persisted profile, no peer re-creation), `tearDown()` (stop + `removeFromPreferences()` + keychain wipe — MUST be called when the device's peer or its network group is deleted, so no zombie VPN stays in iOS Settings). Lives in `AppState.tunnel`.
 - `CCEventsService` - Real WebSocket client targeting `wss://api.clever-cloud.com/v2/events/event-socket`. Protocol reverse-engineered from `@clevercloud/client`: open WS, send `{"message_type":"oauth","authorization":"<OAuth 1.0a header signed for GET https://api.clever-cloud.com/v2/events/>"}` as the first frame; handle `socket_ready` (handshake done), heartbeat (reply pong), `type=error id=2001` (auth rejected), and `event: DEPLOYMENT_ACTION_BEGIN/_END` whose `data` field is a JSON string and must be re-parsed. Exponential reconnect backoff up to 30s. `connect()`/`disconnect()` are driven by `AppState.startPolling()` / `stopPolling()` and `scenePhase`, never by Views directly. `CCConnectionState` is Sendable (`.failed(String)`, not `.failed(Error)`) to satisfy Swift 6 strict-concurrency.
 - `CCScalabilityService` - Instance/flavor scaling configuration
 - `CCApplicationMetricsService` - Application metrics via Warp10
@@ -114,6 +119,7 @@ Most views live directly in `cleveriosclient/` (not in a `Views/` subdirectory):
   `Environment | Configuration | Metrics | Deployments | Logs | Domains | Advanced`
   The Logs tab is a **trampoline** showing a "Display Logs" button that opens `ApplicationLogsView` in a `fullScreenCover`. The other 6 tabs render their content inline.
 - `AddonDetailView` - Add-on details, including an embedded logs viewer using the same buffer policy as `ApplicationLogsView`
+- `NetworkGroupDetailView` - Network group detail (Overview / Members / Peers tabs). The Overview tab hosts the **"VPN on this device" card**: a Toggle when the persisted VPN profile belongs to this group (`tunnel.configuredNetworkGroupId == networkGroup.id` → `startSaved()`/`disconnect()`), an informational text when it belongs to another group, or an "Attach this device" shortcut. Removing the device's external peer, or deleting the whole group, calls `tunnel.tearDown()` so the VPN profile is removed from iOS Settings along with the dead peer. `WireGuardConfigView` (sheet) runs the attach flow: local Curve25519 keygen → `createExternalPeer` → fetch `.conf` → inject private key → QR/copy + optional in-app tunnel connect.
 - `LoginView` - OAuth login flow
 - Scalability/metrics views are in `Views/` subdirectory
 
@@ -150,6 +156,8 @@ All SDK calls return `AnyPublisher<T, CCError>` (Combine). Views subscribe with 
 To re-enable logs in a Release build (e.g. for a TestFlight diagnostic), flip `kForceConsoleLogs` to `true` in `DebugLog.swift` and rebuild Release. **Remember to flip back to `false` before App Store submission.**
 
 **Log-level convention** — `debugLog` calls prefix the message with an emoji that encodes the level: `❌` error, `⚠️` warn, `ℹ️` info, `🔍` debug. Use this convention so a future grep can filter by level. There is no remote log uploader: the App's only network activity is talking to Clever Cloud's API.
+
+`CCHTTPClient.requestRawWithBody` logs the outgoing method/URL and JSON payload unconditionally through `debugLog` (secrets redacted via `redactedBodyPreview`) — kept on purpose after the 2026-07 network-groups 500 investigation, since it costs nothing in Release (`debugLog` compiles out) and makes API issues diagnosable from a device log.
 
 ## Development Guidelines
 
