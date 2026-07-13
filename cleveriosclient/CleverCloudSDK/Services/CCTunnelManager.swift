@@ -27,6 +27,9 @@ final class CCTunnelManager {
     static let appGroup = "group.com.fredalix.cciosclient"
     /// Must match `PacketTunnelProvider.confKey` in the extension (separate module → duplicated).
     private static let confKey = "wgQuickConfig"
+    /// `providerConfiguration` keys persisting which NG/peer the profile belongs to.
+    private static let networkGroupIdKey = "networkGroupId"
+    private static let peerIdKey = "peerId"
 
     enum Status: Equatable {
         case disconnected
@@ -49,6 +52,12 @@ final class CCTunnelManager {
     private(set) var status: Status = .disconnected
     /// Label of the network group whose tunnel is currently loaded.
     private(set) var activeLabel: String?
+    /// Network group the persisted VPN profile belongs to (from `providerConfiguration`).
+    /// The association lives in the NE profile itself so it disappears with the profile if the
+    /// user deletes the VPN in iOS Settings — it can't desynchronize.
+    private(set) var configuredNetworkGroupId: String?
+    /// External peer the persisted VPN profile was created for (from `providerConfiguration`).
+    private(set) var configuredPeerId: String?
 
     private var manager: NETunnelProviderManager?
     /// Not observable state; `nonisolated(unsafe)` so `deinit` (nonisolated) can cancel it.
@@ -67,12 +76,16 @@ final class CCTunnelManager {
         let managers = (try? await NETunnelProviderManager.loadAllFromPreferences()) ?? []
         manager = managers.first
         loaded = true
+        syncConfiguredIds()
         startObserving()
         syncStatus()
     }
 
     /// Install/refresh the single VPN profile with `confString` and start the tunnel.
-    func connect(confString: String, label: String) async {
+    /// `networkGroupId`/`peerId` are persisted in the profile's `providerConfiguration` so the
+    /// on/off toggle can be scoped to the right network group and the profile torn down when
+    /// its peer is deleted.
+    func connect(confString: String, label: String, networkGroupId: String, peerId: String) async {
         if !loaded { await load() }
         status = .connecting
         let mgr = manager ?? NETunnelProviderManager()
@@ -87,6 +100,10 @@ final class CCTunnelManager {
         proto.providerBundleIdentifier = Self.tunnelBundleId
         proto.serverAddress = label // display-only in Settings > VPN
         proto.passwordReference = passwordReference
+        proto.providerConfiguration = [
+            Self.networkGroupIdKey: networkGroupId,
+            Self.peerIdKey: peerId,
+        ]
 
         mgr.protocolConfiguration = proto
         mgr.localizedDescription = "Clever Cloud — \(label)"
@@ -96,12 +113,69 @@ final class CCTunnelManager {
             try await mgr.saveToPreferences()
             try await mgr.loadFromPreferences() // reload so the connection handle is valid
             manager = mgr
+            syncConfiguredIds()
             startObserving()
             try mgr.connection.startVPNTunnel(options: [Self.confKey: confString as NSObject])
             activeLabel = label
         } catch {
             status = .failed(error.localizedDescription)
         }
+    }
+
+    /// Start the tunnel from the persisted profile, without re-generating a peer. No start
+    /// options: the extension reads the conf from the keychain via `passwordReference`.
+    func startSaved() async {
+        if !loaded { await load() }
+        guard let mgr = manager else {
+            status = .failed("No saved VPN configuration.")
+            return
+        }
+        status = .connecting
+        do {
+            // Re-enable in case the user toggled the profile off in iOS Settings.
+            if !mgr.isEnabled {
+                mgr.isEnabled = true
+                try await mgr.saveToPreferences()
+                try await mgr.loadFromPreferences()
+                startObserving()
+            }
+            try mgr.connection.startVPNTunnel()
+            activeLabel = mgr.localizedDescription
+        } catch {
+            status = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Full removal of the device's VPN: stops the tunnel, deletes the profile from iOS
+    /// Settings, and wipes the wg-quick conf (private key) from the keychain. Called when the
+    /// peer this profile was created for is deleted — the config is permanently dead server-side
+    /// and must not survive as a zombie VPN on the device.
+    func tearDown() async {
+        observerTask?.cancel()
+        if let connection = manager?.connection,
+           connection.status != .disconnected && connection.status != .invalid {
+            connection.stopVPNTunnel()
+        }
+        if let mgr = manager {
+            do {
+                try await mgr.removeFromPreferences()
+            } catch {
+                debugLog("⚠️ [CCTunnelManager] removeFromPreferences failed: \(error.localizedDescription)")
+            }
+        }
+        Self.deleteConfFromKeychain()
+        manager = nil
+        status = .disconnected
+        activeLabel = nil
+        configuredNetworkGroupId = nil
+        configuredPeerId = nil
+    }
+
+    private func syncConfiguredIds() {
+        let providerConfig = (manager?.protocolConfiguration as? NETunnelProviderProtocol)?
+            .providerConfiguration
+        configuredNetworkGroupId = providerConfig?[Self.networkGroupIdKey] as? String
+        configuredPeerId = providerConfig?[Self.peerIdKey] as? String
     }
 
     func disconnect() {
@@ -208,5 +282,19 @@ final class CCTunnelManager {
             debugLog("⚠️ [CCTunnelManager] Keychain store failed (status \(osStatus), accessGroup: \(accessGroup ?? "default"))")
         }
         return nil
+    }
+
+    /// Best-effort removal of the stored conf from both access groups (the item may live in
+    /// either, depending on which one `storeConfInKeychain` succeeded with).
+    private static func deleteConfFromKeychain() {
+        for accessGroup in [appGroup, nil] {
+            var query: [CFString: Any] = [
+                kSecClass: kSecClassGenericPassword,
+                kSecAttrService: keychainService,
+                kSecAttrAccount: keychainAccount,
+            ]
+            if let accessGroup { query[kSecAttrAccessGroup] = accessGroup }
+            SecItemDelete(query as CFDictionary)
+        }
     }
 }

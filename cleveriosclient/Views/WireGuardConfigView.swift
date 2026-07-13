@@ -64,6 +64,9 @@ struct WireGuardConfigView: View {
     /// Whether the assembled config contains a `[Peer]` block. A freshly-created peer in a network
     /// group with no gateway yet comes back as `[Interface]`-only, which imports but routes nowhere.
     @State private var configHasPeer: Bool = false
+    /// Id of the external peer created by this sheet — persisted into the VPN profile so the
+    /// profile can be torn down when that peer is deleted.
+    @State private var createdPeerId: String?
     @State private var errorMessage: String?
     @State private var cancellables = Set<AnyCancellable>()
 
@@ -234,14 +237,22 @@ struct WireGuardConfigView: View {
                 if configHasPeer {
                     Divider().padding(.vertical, 4)
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("In-app tunnel (debug)", systemImage: "bolt.horizontal.circle")
+                        Label("In-app tunnel", systemImage: "bolt.horizontal.circle")
                             .font(.subheadline.weight(.semibold))
                         Text("Status: \(tunnel.status.label)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         HStack {
                             Button {
-                                Task { await tunnel.connect(confString: configText, label: deviceName) }
+                                guard let peerId = createdPeerId else { return }
+                                Task {
+                                    await tunnel.connect(
+                                        confString: configText,
+                                        label: deviceName,
+                                        networkGroupId: networkGroupId,
+                                        peerId: peerId
+                                    )
+                                }
                             } label: {
                                 Label("Connect", systemImage: "link")
                                     .frame(maxWidth: .infinity)
@@ -285,12 +296,14 @@ struct WireGuardConfigView: View {
                 publicKey: keys.publicKeyBase64,
                 label: deviceName.trimmingCharacters(in: .whitespaces)
             )
-            .flatMap { peer -> AnyPublisher<String, CCError> in
+            .flatMap { peer -> AnyPublisher<(peerId: String, config: String), CCError> in
                 cleverCloudSDK.networkGroups.getWireGuardConfigurationText(
                     organizationId: orgId,
                     networkGroupId: networkGroupId,
                     peerId: peer.id
                 )
+                .map { (peerId: peer.id, config: $0) }
+                .eraseToAnyPublisher()
             }
             .receive(on: DispatchQueue.main)
             .sink(
@@ -300,8 +313,9 @@ struct WireGuardConfigView: View {
                         phase = .failed
                     }
                 },
-                receiveValue: { rawConfig in
+                receiveValue: { peerId, rawConfig in
                     let assembled = Self.injectingPrivateKey(keys.privateKeyBase64, into: rawConfig)
+                    createdPeerId = peerId
                     configText = assembled
                     configHasPeer = assembled.range(of: "[Peer]", options: .caseInsensitive) != nil
                     phase = .ready

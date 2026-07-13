@@ -9,6 +9,8 @@ struct NetworkGroupDetailView: View {
     let cleverCloudSDK: CleverCloudSDK
 
     @Environment(\.dismiss) private var dismiss
+    /// Tunnel state lives in AppState so it survives navigation — see `AppState.tunnel`.
+    @Environment(AppState.self) private var appState
 
     @State private var members: [CCNetworkGroupMember] = []
     @State private var peers: [CCNetworkGroupPeer] = []
@@ -54,6 +56,9 @@ struct NetworkGroupDetailView: View {
             didRunInitialLoad = true
             reload()
         }
+        // Refresh the persisted-profile state (configured NG/peer ids) so the VPN card shows
+        // the right variant even on a cold launch straight into this screen.
+        .task { await appState.tunnel.load() }
         .sheet(isPresented: $showingAddMember) {
             AddNetworkGroupMemberSheet(
                 networkGroupId: networkGroup.id,
@@ -137,9 +142,77 @@ struct NetworkGroupDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 infoCard
+                vpnCard
                 dangerZone
             }
             .padding()
+        }
+    }
+
+    // MARK: - VPN card
+
+    private var tunnel: CCTunnelManager { appState.tunnel }
+
+    /// On/off control for this device's WireGuard tunnel. Three variants: the persisted VPN
+    /// profile belongs to this network group (toggle), to another one (informational — iOS
+    /// allows a single packet tunnel), or no profile exists yet (attach shortcut).
+    private var vpnCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("VPN on this device", systemImage: "lock.shield")
+                .font(.headline)
+            if tunnel.configuredNetworkGroupId == networkGroup.id {
+                Toggle(isOn: vpnToggleBinding) {
+                    Text(tunnel.status.label)
+                        .font(.subheadline)
+                        .foregroundColor(vpnStatusColor)
+                }
+                .disabled(tunnel.status == .disconnecting)
+                if case .failed(let message) = tunnel.status {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            } else if tunnel.configuredNetworkGroupId != nil {
+                Text("The VPN on this device is configured for another network group (iOS allows a single tunnel). Attach this device here to replace it.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("This device is not attached to this network group yet.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Button {
+                    showingAttachDevice = true
+                } label: {
+                    Label("Attach this device", systemImage: "personalhotspot")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+
+    private var vpnToggleBinding: Binding<Bool> {
+        Binding(
+            get: { tunnel.status == .connected || tunnel.status == .connecting },
+            set: { turnOn in
+                if turnOn {
+                    Task { await tunnel.startSaved() }
+                } else {
+                    tunnel.disconnect()
+                }
+            }
+        )
+    }
+
+    private var vpnStatusColor: Color {
+        switch tunnel.status {
+        case .connected: return .green
+        case .connecting, .disconnecting: return .orange
+        case .failed: return .red
+        case .disconnected: return .secondary
         }
     }
 
@@ -434,7 +507,15 @@ struct NetworkGroupDetailView: View {
             .sink(
                 receiveCompletion: { completion in
                     if case .failure(let error) = completion { actionError = error.localizedDescription }
-                    else { reload() }
+                    else {
+                        // The peer this device's VPN profile was created for is gone — the
+                        // installed config is permanently dead. Remove the profile from iOS
+                        // Settings and wipe the conf (private key) from the keychain.
+                        if peer.id == tunnel.configuredPeerId {
+                            Task { await tunnel.tearDown() }
+                        }
+                        reload()
+                    }
                 },
                 receiveValue: { _ in }
             )
@@ -461,6 +542,11 @@ struct NetworkGroupDetailView: View {
                     if case .failure(let error) = completion {
                         actionError = error.localizedDescription
                     } else {
+                        // The whole group is gone — if this device's VPN profile belonged to it,
+                        // its peer died with the group: remove the profile and keychain conf.
+                        if tunnel.configuredNetworkGroupId == networkGroup.id {
+                            Task { await tunnel.tearDown() }
+                        }
                         // Both ContentView layouts observe this to drop the group from their lists
                         // and reset any selection; dismissing pops the pushed detail on iPhone.
                         NotificationCenter.default.post(name: .networkGroupDestroyed, object: networkGroup.id)
