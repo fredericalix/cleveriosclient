@@ -331,12 +331,9 @@ public final class CCHTTPClient: ObservableObject {
                 let bodyData = try encoder.encode(body)
                 request.httpBody = bodyData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                
-                // Debug: Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
-                if configuration.enableDebugLogging {
-                    debugLog("📦 [DEBUG] JSON Payload being sent:")
-                    debugLog("📦 [DEBUG] \(redactedBodyPreview(bodyData))")
-                }
+
+                // Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
+                debugLog("📦 [CCHTTPClient] JSON payload being sent: \(redactedBodyPreview(bodyData))")
             } catch {
                 return Fail(error: CCError.invalidParameters("Failed to encode request body"))
                     .eraseToAnyPublisher()
@@ -351,9 +348,7 @@ public final class CCHTTPClient: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
-        if configuration.enableDebugLogging {
-            debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(url)")
-        }
+        debugLog("🔍 🚀 [CCHTTPClient] \(method.rawValue) \(url)")
 
         // Perform request
         return urlSession.dataTaskPublisher(for: request)
@@ -448,12 +443,9 @@ public final class CCHTTPClient: ObservableObject {
                 let bodyData = try encoder.encode(body)
                 request.httpBody = bodyData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                
-                // Debug: Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
-                if configuration.enableDebugLogging {
-                    debugLog("📦 [DEBUG] JSON Payload being sent:")
-                    debugLog("📦 [DEBUG] \(redactedBodyPreview(bodyData))")
-                }
+
+                // Log the JSON payload being sent (secrets redacted — env-var bodies carry credentials)
+                debugLog("📦 [CCHTTPClient] JSON payload being sent: \(redactedBodyPreview(bodyData))")
             } catch {
                 return Fail(error: CCError.invalidParameters("Failed to encode request body"))
                     .eraseToAnyPublisher()

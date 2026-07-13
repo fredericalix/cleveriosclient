@@ -127,7 +127,36 @@ public class CCNetworkGroupService {
     public func addNetworkGroupMember(organizationId: String, networkGroupId: String, member: CCNetworkGroupMemberCreate) -> AnyPublisher<Void, CCError> {
         // The members endpoint returns an empty/202 body, so use the raw path (any 2xx = success)
         // rather than trying to decode a member object.
-        return httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members", body: member, apiVersion: .v4)
+        //
+        // Retried on 5xx: the v4 backend intermittently answers 500 to this POST while accepting
+        // the byte-identical body seconds later (observed 2026-07-13, looks like one bad replica
+        // behind Sozu). Replaying the same member id is safe — the server upserts duplicates.
+        let client = httpClient
+        let endpoint = "/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members"
+        return Self.retryingOnServerError { client.postRaw(endpoint, body: member, apiVersion: .v4) }
+    }
+
+    /// Re-subscribes `makePublisher` after a 2s pause when it fails with an HTTP 5xx, up to
+    /// `attempts` extra tries. Only use for calls that are safe to replay (idempotent/upsert).
+    private static func retryingOnServerError<T>(
+        attempts: Int = 2,
+        _ makePublisher: @escaping () -> AnyPublisher<T, CCError>
+    ) -> AnyPublisher<T, CCError> {
+        makePublisher()
+            .catch { error -> AnyPublisher<T, CCError> in
+                guard attempts > 0,
+                      case .httpError(let statusCode, _) = error,
+                      (500...599).contains(statusCode) else {
+                    return Fail(error: error).eraseToAnyPublisher()
+                }
+                debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode), retrying (\(attempts) attempts left)…")
+                return Just(())
+                    .delay(for: .seconds(2), scheduler: DispatchQueue.main)
+                    .setFailureType(to: CCError.self)
+                    .flatMap { _ in retryingOnServerError(attempts: attempts - 1, makePublisher) }
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
     }
 
     /// `<memberId>.m.<networkGroupId>.cc-ng.cloud` — the member domain name the API expects.
@@ -251,12 +280,20 @@ public class CCNetworkGroupService {
     /// Create an external WireGuard peer (e.g. a laptop/phone). Two-step, mirroring clever-tools:
     /// (1) create an EXTERNAL parent member, (2) create the peer with `peerRole=CLIENT` + that parent.
     ///
+    /// The members POST returns 202 Accepted — creation is asynchronous — so before referencing the
+    /// parent from the peer POST we poll the members list until it appears (clever-tools does the
+    /// same in `checkResource`, 1s interval / 30s timeout). POSTing the peer earlier makes the API
+    /// answer 500 because the parent member doesn't exist yet.
+    ///
     /// The external-peers POST returns `{"peerId":"…"}` — the authoritative id of the new peer — so we
     /// resolve the peer by that id (not by matching on publicKey, which could collide). A short retry
-    /// absorbs the v4 eventual-consistency window before the peer is listable. If the peer POST fails,
-    /// the already-created EXTERNAL parent member is rolled back (best-effort) so no orphan is left.
+    /// absorbs the v4 eventual-consistency window before the peer is listable. If the wait or the peer
+    /// POST fails, the already-created EXTERNAL parent member is rolled back (best-effort) so no
+    /// orphan is left.
     public func createExternalPeer(organizationId: String, networkGroupId: String, publicKey: String, label: String) -> AnyPublisher<CCNetworkGroupPeer, CCError> {
-        let parentId = "external_\(UUID().uuidString)"
+        // Lowercased to match clever-tools' crypto.randomUUID(): the id is embedded in a DNS
+        // domainName, and the v4 API strictly validates the `external_<uuid>` format.
+        let parentId = "external_\(UUID().uuidString.lowercased())"
         let parentMember = CCNetworkGroupMemberCreate(
             id: parentId,
             label: "Parent of \(label)",
@@ -267,9 +304,16 @@ public class CCNetworkGroupService {
         let client = httpClient
 
         return addNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, member: parentMember)
-            .flatMap { _ -> AnyPublisher<CCCreatedExternalPeer, CCError> in
-                // Capture the authoritative peerId from the POST body; roll back the parent member on failure.
-                client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+            .flatMap { [weak self] _ -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                // Wait for the async member creation, then capture the authoritative peerId from
+                // the POST body; roll back the parent member on failure.
+                return self.waitForNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, memberId: parentId)
+                    .flatMap { _ -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                        client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+                    }
                     .catch { error -> AnyPublisher<CCCreatedExternalPeer, CCError> in
                         client.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members/\(parentId)", apiVersion: .v4)
                             .catch { _ in Just(()).setFailureType(to: CCError.self) } // ignore cleanup failure
@@ -301,6 +345,33 @@ public class CCNetworkGroupService {
             .eraseToAnyPublisher()
     }
     
+    /// Poll the members list until `memberId` is visible, 1s between attempts, ~30 attempts
+    /// (mirrors clever-tools' `checkResource` polling: 1s interval, 30s timeout). The members
+    /// POST returns 202 Accepted, so the member only becomes referenceable after an
+    /// eventual-consistency window.
+    private func waitForNetworkGroupMember(organizationId: String, networkGroupId: String, memberId: String) -> AnyPublisher<Void, CCError> {
+        return Just(())
+            .delay(for: .seconds(1), scheduler: DispatchQueue.main)
+            .setFailureType(to: CCError.self)
+            .flatMap { [weak self] _ -> AnyPublisher<[CCNetworkGroupMember], CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                return self.getNetworkGroupMembers(organizationId: organizationId, networkGroupId: networkGroupId)
+            }
+            .tryMap { members -> Void in
+                // CCNetworkGroupMember's decoder remaps the API id: `resourceId` holds the raw
+                // API id, `id` is prefixed with "member_" — so match on resourceId.
+                guard members.contains(where: { $0.resourceId == memberId }) else {
+                    debugLog("🔍 [CCNetworkGroupService] Member \(memberId) not listable yet, retrying…")
+                    throw CCError.resourceNotFound
+                }
+            }
+            .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
+            .retry(29)
+            .eraseToAnyPublisher()
+    }
+
     /// Add an add-on to a network group
     /// - Parameters:
     ///   - organizationId: Organization ID
