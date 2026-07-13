@@ -23,6 +23,43 @@ enum WireGuardKey {
     }
 }
 
+// MARK: - Shared provisioning pipeline
+
+/// The external-peer provisioning pipeline shared by `AttachDeviceView` (this device → in-app
+/// tunnel) and `WireGuardConfigView` (another device → conf/QR export):
+/// local keygen → `createExternalPeer` (with its rollback + eventual-consistency polling) →
+/// fetch the `.conf` → inject the locally-generated private key.
+enum WireGuardProvisioning {
+    static func provision(
+        sdk: CleverCloudSDK,
+        organizationId: String,
+        networkGroupId: String,
+        label: String
+    ) -> AnyPublisher<(peerId: String, config: String), CCError> {
+        let keys = WireGuardKey.generate()
+        return sdk.networkGroups
+            .createExternalPeer(
+                organizationId: organizationId,
+                networkGroupId: networkGroupId,
+                publicKey: keys.publicKeyBase64,
+                label: label
+            )
+            .flatMap { peer -> AnyPublisher<(peerId: String, config: String), CCError> in
+                sdk.networkGroups.getWireGuardConfigurationText(
+                    organizationId: organizationId,
+                    networkGroupId: networkGroupId,
+                    peerId: peer.id
+                )
+                .map { rawConfig in
+                    (peerId: peer.id,
+                     config: WireGuardConfigView.injectingPrivateKey(keys.privateKeyBase64, into: rawConfig))
+                }
+                .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+}
+
 // MARK: - QR generation
 
 enum QRCode {
@@ -40,11 +77,12 @@ enum QRCode {
 
 // MARK: - WireGuardConfigView
 //
-// Attaches "this device" to a network group as an external WireGuard peer:
-//   1. generate a Curve25519 key pair locally (private key stays on device);
+// Creates an external WireGuard peer for ANOTHER device (laptop, other phone…):
+//   1. generate a Curve25519 key pair locally (private key stays on this device);
 //   2. create the external peer with the public key;
 //   3. fetch the peer's WireGuard config (text) and inject the local private key;
 //   4. present the .conf as text + QR + copy, to import into a WireGuard client.
+// It never touches THIS device's VPN profile — that's `AttachDeviceView`'s job.
 struct WireGuardConfigView: View {
     let networkGroupId: String
     let organizationId: String?
@@ -54,9 +92,6 @@ struct WireGuardConfigView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    /// Tunnel state lives in AppState (not sheet-local @State) so the connection and its status
-    /// observer survive dismissing this sheet — see `AppState.tunnel`.
-    @Environment(AppState.self) private var appState
 
     @State private var deviceName: String = "My device"
     @State private var phase: Phase = .idle
@@ -64,14 +99,8 @@ struct WireGuardConfigView: View {
     /// Whether the assembled config contains a `[Peer]` block. A freshly-created peer in a network
     /// group with no gateway yet comes back as `[Interface]`-only, which imports but routes nowhere.
     @State private var configHasPeer: Bool = false
-    /// Id of the external peer created by this sheet — persisted into the VPN profile so the
-    /// profile can be torn down when that peer is deleted.
-    @State private var createdPeerId: String?
     @State private var errorMessage: String?
     @State private var cancellables = Set<AnyCancellable>()
-
-    /// Phase 0 spike: drives the in-app WireGuard tunnel from the assembled config.
-    private var tunnel: CCTunnelManager { appState.tunnel }
 
     private enum Phase: Equatable {
         case idle          // waiting for the user to name the device and tap Generate
@@ -90,7 +119,7 @@ struct WireGuardConfigView: View {
                 case .failed: failedView
                 }
             }
-            .navigationTitle("Attach this device")
+            .navigationTitle("Add external peer")
             .navigationBarTitleDisplayMode(.inline)
             // The ready view shows the WireGuard private key (text + QR). Cover it while the scene
             // is not active so the key doesn't land in the app-switcher snapshot.
@@ -109,7 +138,6 @@ struct WireGuardConfigView: View {
                     Button("Close") { dismiss() }
                 }
             }
-            .task { await tunnel.load() }
         }
     }
 
@@ -233,44 +261,6 @@ struct WireGuardConfigView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-
-                if configHasPeer {
-                    Divider().padding(.vertical, 4)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("In-app tunnel", systemImage: "bolt.horizontal.circle")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Status: \(tunnel.status.label)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Button {
-                                guard let peerId = createdPeerId else { return }
-                                Task {
-                                    await tunnel.connect(
-                                        confString: configText,
-                                        label: deviceName,
-                                        networkGroupId: networkGroupId,
-                                        peerId: peerId
-                                    )
-                                }
-                            } label: {
-                                Label("Connect", systemImage: "link")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(tunnel.status == .connecting || tunnel.status == .connected)
-
-                            Button(role: .destructive) {
-                                tunnel.disconnect()
-                            } label: {
-                                Label("Disconnect", systemImage: "xmark")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(tunnel.status == .disconnected)
-                        }
-                    }
-                }
             }
             .padding()
         }
@@ -287,42 +277,28 @@ struct WireGuardConfigView: View {
         phase = .working
         errorMessage = nil
 
-        let keys = WireGuardKey.generate()
-
-        cleverCloudSDK.networkGroups
-            .createExternalPeer(
-                organizationId: orgId,
-                networkGroupId: networkGroupId,
-                publicKey: keys.publicKeyBase64,
-                label: deviceName.trimmingCharacters(in: .whitespaces)
-            )
-            .flatMap { peer -> AnyPublisher<(peerId: String, config: String), CCError> in
-                cleverCloudSDK.networkGroups.getWireGuardConfigurationText(
-                    organizationId: orgId,
-                    networkGroupId: networkGroupId,
-                    peerId: peer.id
-                )
-                .map { (peerId: peer.id, config: $0) }
-                .eraseToAnyPublisher()
-            }
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        errorMessage = error.localizedDescription
-                        phase = .failed
-                    }
-                },
-                receiveValue: { peerId, rawConfig in
-                    let assembled = Self.injectingPrivateKey(keys.privateKeyBase64, into: rawConfig)
-                    createdPeerId = peerId
-                    configText = assembled
-                    configHasPeer = assembled.range(of: "[Peer]", options: .caseInsensitive) != nil
-                    phase = .ready
-                    onPeerCreated?()
+        WireGuardProvisioning.provision(
+            sdk: cleverCloudSDK,
+            organizationId: orgId,
+            networkGroupId: networkGroupId,
+            label: deviceName.trimmingCharacters(in: .whitespaces)
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { completion in
+                if case .failure(let error) = completion {
+                    errorMessage = error.localizedDescription
+                    phase = .failed
                 }
-            )
-            .store(in: &cancellables)
+            },
+            receiveValue: { _, config in
+                configText = config
+                configHasPeer = config.range(of: "[Peer]", options: .caseInsensitive) != nil
+                phase = .ready
+                onPeerCreated?()
+            }
+        )
+        .store(in: &cancellables)
     }
 
     /// Inserts/overwrites the `[Interface] PrivateKey` line with the locally-generated key, since the

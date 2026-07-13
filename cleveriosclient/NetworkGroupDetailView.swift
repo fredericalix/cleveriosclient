@@ -19,7 +19,10 @@ struct NetworkGroupDetailView: View {
     @State private var selectedTab = 0
 
     @State private var showingAddMember = false
+    /// "This device" flow: creates the peer AND installs/starts the in-app VPN (AttachDeviceView).
     @State private var showingAttachDevice = false
+    /// "Another device" flow: creates a peer and exports its conf/QR only (WireGuardConfigView).
+    @State private var showingAddExternalPeer = false
     @State private var showingDeleteConfirmation = false
     @State private var deleteConfirmationText = ""
     @State private var isDeleting = false
@@ -69,6 +72,14 @@ struct NetworkGroupDetailView: View {
             )
         }
         .sheet(isPresented: $showingAttachDevice) {
+            AttachDeviceView(
+                networkGroupId: networkGroup.id,
+                organizationId: organizationId,
+                cleverCloudSDK: cleverCloudSDK,
+                onPeerCreated: { reload() }
+            )
+        }
+        .sheet(isPresented: $showingAddExternalPeer) {
             WireGuardConfigView(
                 networkGroupId: networkGroup.id,
                 organizationId: organizationId,
@@ -173,9 +184,16 @@ struct NetworkGroupDetailView: View {
                         .foregroundColor(.red)
                 }
             } else if tunnel.configuredNetworkGroupId != nil {
-                Text("The VPN on this device is configured for another network group (iOS allows a single tunnel). Attach this device here to replace it.")
+                Text("The VPN on this device is configured for another network group (iOS allows a single tunnel). Attaching it here replaces that configuration.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                Button {
+                    showingAttachDevice = true
+                } label: {
+                    Label("Attach this device instead", systemImage: "personalhotspot")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             } else {
                 Text("This device is not attached to this network group yet.")
                     .font(.subheadline)
@@ -344,10 +362,19 @@ struct NetworkGroupDetailView: View {
                 HStack {
                     Text("Peers").font(.title2).fontWeight(.bold)
                     Spacer()
-                    Button {
-                        showingAttachDevice = true
+                    Menu {
+                        Button {
+                            showingAttachDevice = true
+                        } label: {
+                            Label("This device…", systemImage: "iphone")
+                        }
+                        Button {
+                            showingAddExternalPeer = true
+                        } label: {
+                            Label("Another device…", systemImage: "qrcode")
+                        }
                     } label: {
-                        Label("Attach this device", systemImage: "qrcode")
+                        Label("Add peer", systemImage: "plus.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
                 }
