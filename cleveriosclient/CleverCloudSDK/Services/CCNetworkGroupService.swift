@@ -6,6 +6,18 @@ fileprivate struct CCCreatedExternalPeer: Codable {
     let peerId: String
 }
 
+/// Wire body of `POST .../networkgroups`, mirroring clever-tools: the client generates the
+/// `ng_<uuid>` id and sends it (with `ownerId`) so the creation is idempotent — replaying the
+/// same id is safe, which makes the POST retryable on the intermittent v4 5xx — and the created
+/// group can be resolved by id instead of a fragile list-diff/name match.
+fileprivate struct CCNetworkGroupCreateBody: Codable {
+    let ownerId: String
+    let id: String
+    let label: String
+    let description: String?
+    let networkIp: String?
+}
+
 // MARK: - CCNetworkGroupService
 /// Service for managing Clever Cloud Network Groups (v4 API).
 /// Driven live from the app UI since 2026-06; endpoints/models are validated against the real API
@@ -44,37 +56,50 @@ public class CCNetworkGroupService {
     ///   - networkGroup: Network group creation data
     /// - Returns: Publisher emitting created network group or error
     public func createNetworkGroup(organizationId: String, networkGroup: CCNetworkGroupCreate) -> AnyPublisher<CCNetworkGroup, CCError> {
-        // The v4 NG payload has no createdAt/timestamp, so we can't pick "the newest" by date.
-        // Snapshot the existing ids first, then after creating, return the id that wasn't there before.
-        let priorIds = getNetworkGroups(organizationId: organizationId)
-            .map { Set($0.map { $0.id }) }
-            .catch { _ in Just(Set<String>()).setFailureType(to: CCError.self) }
-            .eraseToAnyPublisher()
+        // Client-generated lowercase id, like clever-tools' crypto.randomUUID(): the POST becomes
+        // idempotent (retryable on 5xx) and the created group is resolved by its known id — the
+        // creation POST answers 202 with an empty body, so a poll absorbs the async window.
+        let ngId = "ng_\(UUID().uuidString.lowercased())"
+        let body = CCNetworkGroupCreateBody(
+            ownerId: organizationId,
+            id: ngId,
+            label: networkGroup.name,
+            description: networkGroup.description,
+            networkIp: networkGroup.cidr
+        )
+        let client = httpClient
 
-        return priorIds
-            .flatMap { existingIds -> AnyPublisher<CCNetworkGroup, CCError> in
-                self.httpClient.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups", body: networkGroup, apiVersion: .v4)
-                    .flatMap { _ -> AnyPublisher<[CCNetworkGroup], CCError> in
-                        // Small delay to allow the API to process the creation.
-                        Just(())
-                            .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
-                            .setFailureType(to: CCError.self)
-                            .flatMap { _ in self.getNetworkGroups(organizationId: organizationId) }
-                            .eraseToAnyPublisher()
-                    }
-                    .tryMap { networkGroups -> CCNetworkGroup in
-                        // Prefer the id that did not exist before the create; fall back to a name match.
-                        if let created = networkGroups.first(where: { !existingIds.contains($0.id) && $0.name == networkGroup.name }) {
-                            return created
-                        }
-                        if let byName = networkGroups.first(where: { $0.name == networkGroup.name }) {
-                            return byName
-                        }
-                        throw CCError.invalidParameters("Failed to retrieve created network group")
-                    }
-                    .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
-                    .eraseToAnyPublisher()
+        return Self.retryingOnServerError { client.postRaw("/networkgroups/organisations/\(organizationId)/networkgroups", body: body, apiVersion: .v4) }
+            .flatMap { [weak self] _ -> AnyPublisher<CCNetworkGroup, CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                return self.waitForNetworkGroup(organizationId: organizationId, networkGroupId: ngId)
             }
+            .eraseToAnyPublisher()
+    }
+
+    /// Poll the network-groups list until `networkGroupId` is visible and return it — same
+    /// pattern as `waitForNetworkGroupMember` (creation answers 202 Accepted, async).
+    private func waitForNetworkGroup(organizationId: String, networkGroupId: String) -> AnyPublisher<CCNetworkGroup, CCError> {
+        return Just(())
+            .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .setFailureType(to: CCError.self)
+            .flatMap { [weak self] _ -> AnyPublisher<[CCNetworkGroup], CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                return self.getNetworkGroups(organizationId: organizationId)
+            }
+            .tryMap { networkGroups -> CCNetworkGroup in
+                guard let created = networkGroups.first(where: { $0.id == networkGroupId }) else {
+                    debugLog("🔍 [CCNetworkGroupService] Network group \(networkGroupId) not listable yet, retrying…")
+                    throw CCError.resourceNotFound
+                }
+                return created
+            }
+            .mapError { ($0 as? CCError) ?? CCError.unknown($0) }
+            .retry(29)
             .eraseToAnyPublisher()
     }
     
