@@ -101,7 +101,11 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
     
     /// Application or add-on ID
     public let resourceId: String
-    
+
+    /// DNS name of the member inside the network group
+    /// (`<resourceId>.m.<ngId>.cc-ng.cloud` — resolvable by the NG's peers)
+    public let domainName: String?
+
     /// IP address assigned in the network group
     public let ipAddress: String?
     
@@ -145,6 +149,7 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
         case name = "label"
         case description
         case resourceId = "id"
+        case domainName
         case ipAddress = "ip_address"
         case joinedAt = "joined_at"
         case status
@@ -160,6 +165,7 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
         self.type = try container.decode(CCNetworkGroupMemberType.self, forKey: .type)
         self.name = try container.decode(String.self, forKey: .name)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.domainName = try container.decodeIfPresent(String.self, forKey: .domainName)
         self.ipAddress = try container.decodeIfPresent(String.self, forKey: .ipAddress)
         self.joinedAt = try container.decodeIfPresent(Date.self, forKey: .joinedAt)
         self.status = try container.decodeIfPresent(String.self, forKey: .status) ?? "connected"
@@ -173,6 +179,7 @@ public struct CCNetworkGroupMember: Codable, Identifiable, Equatable {
         try container.encode(type, forKey: .type)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(domainName, forKey: .domainName)
         try container.encodeIfPresent(ipAddress, forKey: .ipAddress)
         try container.encodeIfPresent(joinedAt, forKey: .joinedAt)
         try container.encodeIfPresent(status, forKey: .status)
@@ -252,6 +259,10 @@ public struct CCNetworkGroupPeer: Codable, Identifiable, Equatable {
     /// Internal hostname
     public let hostname: String?
 
+    /// IP of the peer inside the network group — `endpoint.ngTerm.host` for CleverPeers
+    /// (ServerEndpoint), `endpoint.ngIp` for external peers (ClientEndpoint).
+    public let ngIp: String?
+
     // MARK: - Computed Properties
 
     /// Is this an external (user-added) peer rather than an auto-created member peer
@@ -272,10 +283,20 @@ public struct CCNetworkGroupPeer: Codable, Identifiable, Equatable {
         case publicKey
         case parentMember
         case hostname
+        case endpoint
+    }
+
+    private enum EndpointKeys: String, CodingKey {
+        case ngTerm
+        case ngIp
+    }
+
+    private enum TermKeys: String, CodingKey {
+        case host
     }
 
     /// Tolerant decoding: only `id` is required; everything else falls back so a payload-shape change
-    /// (or the nested `endpoint` object, which is intentionally not decoded) can't break the peers list.
+    /// can't break the peers list. The nested `endpoint` object is only mined for the NG-internal IP.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
@@ -284,6 +305,19 @@ public struct CCNetworkGroupPeer: Codable, Identifiable, Equatable {
         self.publicKey = try? c.decode(String.self, forKey: .publicKey)
         self.parentMember = try? c.decode(String.self, forKey: .parentMember)
         self.hostname = try? c.decode(String.self, forKey: .hostname)
+
+        if let endpoint = try? c.nestedContainer(keyedBy: EndpointKeys.self, forKey: .endpoint) {
+            if let clientIp = try? endpoint.decode(String.self, forKey: .ngIp) {
+                self.ngIp = clientIp // ExternalPeer: {"ngIp":"10.101.0.6","type":"ClientEndpoint"}
+            } else if let term = try? endpoint.nestedContainer(keyedBy: TermKeys.self, forKey: .ngTerm),
+                      let host = try? term.decode(String.self, forKey: .host) {
+                self.ngIp = host // CleverPeer: {"ngTerm":{"host":"10.101.0.5","port":…},…}
+            } else {
+                self.ngIp = nil
+            }
+        } else {
+            self.ngIp = nil
+        }
     }
 
     public func encode(to encoder: Encoder) throws {

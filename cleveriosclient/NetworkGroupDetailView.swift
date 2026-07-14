@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Combine
 
 /// Detail screen for a network group: overview, members (apps/add-ons) and peers (incl. attaching
@@ -336,6 +337,20 @@ struct NetworkGroupDetailView: View {
                 Text(member.name).font(.subheadline).fontWeight(.medium)
                 Text("\(member.type.displayName) • \(member.resourceId)")
                     .font(.caption).foregroundColor(.secondary)
+                if let domainName = member.domainName {
+                    Text(domainName)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = domainName
+                            } label: {
+                                Label("Copy domain name", systemImage: "doc.on.doc")
+                            }
+                        }
+                }
             }
             Spacer()
             if let ip = member.ipAddress {
@@ -410,6 +425,18 @@ struct NetworkGroupDetailView: View {
                     .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
+            if let ngIp = peer.ngIp {
+                Text(ngIp)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = ngIp
+                        } label: {
+                            Label("Copy IP", systemImage: "doc.on.doc")
+                        }
+                    }
+            }
             if peer.isExternal {
                 Button(role: .destructive) {
                     pendingPeerRemoval = peer
