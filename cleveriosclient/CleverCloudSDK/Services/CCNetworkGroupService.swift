@@ -337,7 +337,12 @@ public class CCNetworkGroupService {
                 // the POST body; roll back the parent member on failure.
                 return self.waitForNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, memberId: parentId)
                     .flatMap { _ -> AnyPublisher<CCCreatedExternalPeer, CCError> in
-                        client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: peerBody, apiVersion: .v4)
+                        self.createExternalPeerRecovering(
+                            organizationId: organizationId,
+                            networkGroupId: networkGroupId,
+                            body: peerBody,
+                            publicKey: publicKey
+                        )
                     }
                     .catch { error -> AnyPublisher<CCCreatedExternalPeer, CCError> in
                         client.deleteRaw("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/members/\(parentId)", apiVersion: .v4)
@@ -370,6 +375,57 @@ public class CCNetworkGroupService {
             .eraseToAnyPublisher()
     }
     
+    /// POST the external peer, absorbing the intermittent v4 5xx. Unlike members/groups the peer
+    /// id is server-generated, so a blind replay could create a duplicate: after a 5xx we first
+    /// look the peer up by its public key (unique — freshly generated per attach) and adopt it if
+    /// the POST actually went through server-side; only when it truly didn't do we replay, up to
+    /// `attempts` extra times.
+    private func createExternalPeerRecovering(
+        organizationId: String,
+        networkGroupId: String,
+        body: CCNetworkGroupExternalPeerCreate,
+        publicKey: String,
+        attempts: Int = 2
+    ) -> AnyPublisher<CCCreatedExternalPeer, CCError> {
+        let client = httpClient
+        return client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: body, apiVersion: .v4)
+            .catch { [weak self] error -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                guard let self,
+                      case .httpError(let statusCode, _) = error,
+                      (500...599).contains(statusCode) else {
+                    return Fail(error: error).eraseToAnyPublisher()
+                }
+                return Just(())
+                    .delay(for: .seconds(2), scheduler: DispatchQueue.main)
+                    .setFailureType(to: CCError.self)
+                    .flatMap { _ in
+                        self.getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId)
+                            .catch { _ in Just([]).setFailureType(to: CCError.self) }
+                    }
+                    .flatMap { peers -> AnyPublisher<CCCreatedExternalPeer, CCError> in
+                        if let existing = peers.first(where: { $0.publicKey == publicKey }) {
+                            debugLog("⚠️ [CCNetworkGroupService] external-peers POST answered \(statusCode) but the peer exists — adopting \(existing.id)")
+                            return Just(CCCreatedExternalPeer(peerId: existing.id))
+                                .setFailureType(to: CCError.self)
+                                .eraseToAnyPublisher()
+                        }
+                        guard attempts > 0 else {
+                            return Fail(error: error).eraseToAnyPublisher()
+                        }
+                        debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode) on external-peers POST, retrying (\(attempts) attempts left)…")
+                        return self.createExternalPeerRecovering(
+                            organizationId: organizationId,
+                            networkGroupId: networkGroupId,
+                            body: body,
+                            publicKey: publicKey,
+                            attempts: attempts - 1
+                        )
+                    }
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+
     /// Poll the members list until `memberId` is visible, 1s between attempts, ~30 attempts
     /// (mirrors clever-tools' `checkResource` polling: 1s interval, 30s timeout). The members
     /// POST returns 202 Accepted, so the member only becomes referenceable after an
