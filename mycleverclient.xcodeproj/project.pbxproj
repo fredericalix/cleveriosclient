@@ -394,7 +394,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.33;
+				CURRENT_PROJECT_VERSION = 2.34;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PacketTunnelExtension/Info.plist;
@@ -414,7 +414,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/wg-go/ios-sim",
 				);
-				MARKETING_VERSION = 2.33;
+				MARKETING_VERSION = 2.34;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lresolv",
@@ -437,7 +437,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.33;
+				CURRENT_PROJECT_VERSION = 2.34;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PacketTunnelExtension/Info.plist;
@@ -457,7 +457,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/wg-go/ios-sim",
 				);
-				MARKETING_VERSION = 2.33;
+				MARKETING_VERSION = 2.34;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lresolv",
@@ -602,7 +602,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = mycleverclient.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.33;
+				CURRENT_PROJECT_VERSION = 2.34;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -620,7 +620,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.33;
+				MARKETING_VERSION = 2.34;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fredalix.cciosclient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -641,7 +641,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = mycleverclient.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.33;
+				CURRENT_PROJECT_VERSION = 2.34;
 				DEVELOPMENT_TEAM = DS6BK4WLCX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -659,7 +659,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.33;
+				MARKETING_VERSION = 2.34;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fredalix.cciosclient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
