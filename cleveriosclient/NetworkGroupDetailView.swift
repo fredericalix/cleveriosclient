@@ -330,32 +330,32 @@ struct NetworkGroupDetailView: View {
         }
     }
 
+    /// NG-internal IPs of a member = the IPs of its peers (a multi-instance app has one
+    /// CleverPeer per instance). Members carry no IP of their own in the v4 payload.
+    private func memberIps(_ member: CCNetworkGroupMember) -> [String] {
+        peers.filter { $0.parentMember == member.resourceId }.compactMap { $0.ngIp }
+    }
+
     private func memberRow(_ member: CCNetworkGroupMember) -> some View {
         HStack {
             Image(systemName: member.type.icon).foregroundColor(.blue)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(member.name).font(.subheadline).fontWeight(.medium)
                 Text("\(member.type.displayName) • \(member.resourceId)")
                     .font(.caption).foregroundColor(.secondary)
                 if let domainName = member.domainName {
-                    Text(domainName)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .contextMenu {
-                            Button {
-                                UIPasteboard.general.string = domainName
-                            } label: {
-                                Label("Copy domain name", systemImage: "doc.on.doc")
-                            }
+                    CopyableValue(value: domainName)
+                }
+                let ips = memberIps(member)
+                if !ips.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(ips, id: \.self) { ip in
+                            CopyableValue(value: ip)
                         }
+                    }
                 }
             }
             Spacer()
-            if let ip = member.ipAddress {
-                Text(ip).font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary)
-            }
             Button(role: .destructive) {
                 pendingMemberRemoval = member
             } label: {
@@ -419,24 +419,19 @@ struct NetworkGroupDetailView: View {
     private func peerRow(_ peer: CCNetworkGroupPeer) -> some View {
         HStack {
             Image(systemName: peer.isExternal ? "globe" : "house").foregroundColor(peer.isExternal ? .blue : .green)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(peer.name).font(.subheadline).fontWeight(.medium)
                 Text(peer.isExternal ? "External peer" : (peer.parentMember.map { "Linked to \($0)" } ?? "Internal peer"))
                     .font(.caption).foregroundColor(.secondary)
+                if let ngIp = peer.ngIp {
+                    CopyableValue(value: ngIp)
+                }
+                // A peer has no DNS name of its own — surface its parent member's.
+                if let domainName = members.first(where: { $0.resourceId == peer.parentMember })?.domainName {
+                    CopyableValue(value: domainName)
+                }
             }
             Spacer()
-            if let ngIp = peer.ngIp {
-                Text(ngIp)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = ngIp
-                        } label: {
-                            Label("Copy IP", systemImage: "doc.on.doc")
-                        }
-                    }
-            }
             if peer.isExternal {
                 Button(role: .destructive) {
                     pendingPeerRemoval = peer
@@ -733,5 +728,38 @@ private struct AddNetworkGroupMemberSheet: View {
                 receiveValue: { _ in }
             )
             .store(in: &cancellables)
+    }
+}
+
+// MARK: - CopyableValue
+
+/// A monospaced technical value (DNS name, IP…) that copies itself on tap, with haptic feedback
+/// and a transient checkmark. Used by the network-group member/peer rows.
+private struct CopyableValue: View {
+    let value: String
+
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = value
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.easeIn(duration: 0.15)) { copied = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation(.easeOut(duration: 0.3)) { copied = false }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(value)
+                    .font(.system(.caption2, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                    .font(.caption2)
+            }
+            .foregroundColor(copied ? .green : .secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copied ? "Copied" : "Copy \(value)")
     }
 }
