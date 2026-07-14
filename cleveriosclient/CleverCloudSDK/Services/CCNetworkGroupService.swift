@@ -163,8 +163,10 @@ public class CCNetworkGroupService {
 
     /// Re-subscribes `makePublisher` after a 2s pause when it fails with an HTTP 5xx, up to
     /// `attempts` extra tries. Only use for calls that are safe to replay (idempotent/upsert).
+    /// 5 retries (6 attempts total): field logs showed 3 consecutive 500s on bad days, so 2
+    /// retries weren't always enough to land on a healthy replica.
     private static func retryingOnServerError<T>(
-        attempts: Int = 2,
+        attempts: Int = 5,
         _ makePublisher: @escaping () -> AnyPublisher<T, CCError>
     ) -> AnyPublisher<T, CCError> {
         makePublisher()
@@ -385,7 +387,7 @@ public class CCNetworkGroupService {
         networkGroupId: String,
         body: CCNetworkGroupExternalPeerCreate,
         publicKey: String,
-        attempts: Int = 2
+        attempts: Int = 5
     ) -> AnyPublisher<CCCreatedExternalPeer, CCError> {
         let client = httpClient
         return client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: body, apiVersion: .v4)
