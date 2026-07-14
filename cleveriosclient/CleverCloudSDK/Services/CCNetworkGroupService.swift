@@ -161,26 +161,30 @@ public class CCNetworkGroupService {
         return Self.retryingOnServerError { client.postRaw(endpoint, body: member, apiVersion: .v4) }
     }
 
-    /// Re-subscribes `makePublisher` after a 2s pause when it fails with an HTTP 5xx, up to
-    /// `attempts` extra tries. Only use for calls that are safe to replay (idempotent/upsert).
-    /// 5 retries (6 attempts total): field logs showed 3 consecutive 500s on bad days, so 2
-    /// retries weren't always enough to land on a healthy replica.
+    /// Pauses between successive 5xx retries: two quick 2s retries, a 5s breather (field logs
+    /// showed up to 3 consecutive 500s — the bad-replica ratio behind the v4 LB fluctuates, so
+    /// give it a moment), then a second burst of two. 6 attempts total, ~13s worst case.
+    static let serverErrorRetryDelays: [TimeInterval] = [2, 2, 5, 2, 2]
+
+    /// Re-subscribes `makePublisher` when it fails with an HTTP 5xx, pausing per the `delays`
+    /// schedule (one entry consumed per retry). Only use for calls that are safe to replay
+    /// (idempotent/upsert).
     private static func retryingOnServerError<T>(
-        attempts: Int = 5,
+        delays: [TimeInterval] = serverErrorRetryDelays,
         _ makePublisher: @escaping () -> AnyPublisher<T, CCError>
     ) -> AnyPublisher<T, CCError> {
         makePublisher()
             .catch { error -> AnyPublisher<T, CCError> in
-                guard attempts > 0,
+                guard let delay = delays.first,
                       case .httpError(let statusCode, _) = error,
                       (500...599).contains(statusCode) else {
                     return Fail(error: error).eraseToAnyPublisher()
                 }
-                debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode), retrying (\(attempts) attempts left)…")
+                debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode), retrying in \(Int(delay))s (\(delays.count) attempts left)…")
                 return Just(())
-                    .delay(for: .seconds(2), scheduler: DispatchQueue.main)
+                    .delay(for: .seconds(delay), scheduler: DispatchQueue.main)
                     .setFailureType(to: CCError.self)
-                    .flatMap { _ in retryingOnServerError(attempts: attempts - 1, makePublisher) }
+                    .flatMap { _ in retryingOnServerError(delays: Array(delays.dropFirst()), makePublisher) }
                     .eraseToAnyPublisher()
             }
             .eraseToAnyPublisher()
@@ -387,7 +391,7 @@ public class CCNetworkGroupService {
         networkGroupId: String,
         body: CCNetworkGroupExternalPeerCreate,
         publicKey: String,
-        attempts: Int = 5
+        delays: [TimeInterval] = CCNetworkGroupService.serverErrorRetryDelays
     ) -> AnyPublisher<CCCreatedExternalPeer, CCError> {
         let client = httpClient
         return client.post("/networkgroups/organisations/\(organizationId)/networkgroups/\(networkGroupId)/external-peers", body: body, apiVersion: .v4)
@@ -397,8 +401,9 @@ public class CCNetworkGroupService {
                       (500...599).contains(statusCode) else {
                     return Fail(error: error).eraseToAnyPublisher()
                 }
+                let delay = delays.first ?? 2
                 return Just(())
-                    .delay(for: .seconds(2), scheduler: DispatchQueue.main)
+                    .delay(for: .seconds(delay), scheduler: DispatchQueue.main)
                     .setFailureType(to: CCError.self)
                     .flatMap { _ in
                         self.getNetworkGroupPeers(organizationId: organizationId, networkGroupId: networkGroupId)
@@ -411,16 +416,16 @@ public class CCNetworkGroupService {
                                 .setFailureType(to: CCError.self)
                                 .eraseToAnyPublisher()
                         }
-                        guard attempts > 0 else {
+                        guard !delays.isEmpty else {
                             return Fail(error: error).eraseToAnyPublisher()
                         }
-                        debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode) on external-peers POST, retrying (\(attempts) attempts left)…")
+                        debugLog("⚠️ [CCNetworkGroupService] Server error \(statusCode) on external-peers POST, retrying (\(delays.count) attempts left)…")
                         return self.createExternalPeerRecovering(
                             organizationId: organizationId,
                             networkGroupId: networkGroupId,
                             body: body,
                             publicKey: publicKey,
-                            attempts: attempts - 1
+                            delays: Array(delays.dropFirst())
                         )
                     }
                     .eraseToAnyPublisher()
