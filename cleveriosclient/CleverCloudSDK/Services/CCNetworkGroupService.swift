@@ -426,6 +426,32 @@ public class CCNetworkGroupService {
             .eraseToAnyPublisher()
     }
 
+    /// Delete an external peer and (best-effort) its `external_<uuid>` parent member.
+    /// Used when re-attaching this device to a different network group: the previous peer's
+    /// private key has been overwritten in the keychain (single slot, never leaves the device),
+    /// so that peer can never work again — clean it up instead of leaving a zombie server-side.
+    public func deleteExternalPeerCascading(organizationId: String, networkGroupId: String, peerId: String) -> AnyPublisher<Void, CCError> {
+        return getNetworkGroupPeer(organizationId: organizationId, networkGroupId: networkGroupId, peerId: peerId)
+            .map { $0.parentMember }
+            .catch { _ in Just(String?.none).setFailureType(to: CCError.self) } // peer lookup is best-effort
+            .flatMap { [weak self] parentMember -> AnyPublisher<Void, CCError> in
+                guard let self else {
+                    return Fail(error: CCError.invalidParameters("Service deallocated")).eraseToAnyPublisher()
+                }
+                return self.removeNetworkGroupExternalPeer(organizationId: organizationId, networkGroupId: networkGroupId, peerId: peerId)
+                    .flatMap { _ -> AnyPublisher<Void, CCError> in
+                        guard let parentMember, parentMember.hasPrefix("external_") else {
+                            return Just(()).setFailureType(to: CCError.self).eraseToAnyPublisher()
+                        }
+                        return self.removeNetworkGroupMember(organizationId: organizationId, networkGroupId: networkGroupId, memberId: parentMember)
+                            .catch { _ in Just(()).setFailureType(to: CCError.self) } // parent may be gone / cascaded
+                            .eraseToAnyPublisher()
+                    }
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+
     /// Poll the members list until `memberId` is visible, 1s between attempts, ~30 attempts
     /// (mirrors clever-tools' `checkResource` polling: 1s interval, 30s timeout). The members
     /// POST returns 202 Accepted, so the member only becomes referenceable after an

@@ -27,7 +27,8 @@ final class CCTunnelManager {
     static let appGroup = "group.com.fredalix.cciosclient"
     /// Must match `PacketTunnelProvider.confKey` in the extension (separate module → duplicated).
     private static let confKey = "wgQuickConfig"
-    /// `providerConfiguration` keys persisting which NG/peer the profile belongs to.
+    /// `providerConfiguration` keys persisting which org/NG/peer the profile belongs to.
+    private static let organizationIdKey = "organizationId"
     private static let networkGroupIdKey = "networkGroupId"
     private static let peerIdKey = "peerId"
 
@@ -58,6 +59,10 @@ final class CCTunnelManager {
     private(set) var configuredNetworkGroupId: String?
     /// External peer the persisted VPN profile was created for (from `providerConfiguration`).
     private(set) var configuredPeerId: String?
+    /// Owner (org or user_…) of the configured network group — needed to clean the previous
+    /// peer up when the device is re-attached to a different group. Nil on profiles created
+    /// before this key existed.
+    private(set) var configuredOrganizationId: String?
 
     private var manager: NETunnelProviderManager?
     /// Not observable state; `nonisolated(unsafe)` so `deinit` (nonisolated) can cancel it.
@@ -82,10 +87,11 @@ final class CCTunnelManager {
     }
 
     /// Install/refresh the single VPN profile with `confString` and start the tunnel.
-    /// `networkGroupId`/`peerId` are persisted in the profile's `providerConfiguration` so the
-    /// on/off toggle can be scoped to the right network group and the profile torn down when
-    /// its peer is deleted.
-    func connect(confString: String, label: String, networkGroupId: String, peerId: String) async {
+    /// `organizationId`/`networkGroupId`/`peerId` are persisted in the profile's
+    /// `providerConfiguration` so the on/off toggle can be scoped to the right network group,
+    /// the profile torn down when its peer is deleted, and the previous peer cleaned up when
+    /// the device is re-attached elsewhere.
+    func connect(confString: String, label: String, organizationId: String, networkGroupId: String, peerId: String) async {
         if !loaded { await load() }
         status = .connecting
         let mgr = manager ?? NETunnelProviderManager()
@@ -101,6 +107,7 @@ final class CCTunnelManager {
         proto.serverAddress = label // display-only in Settings > VPN
         proto.passwordReference = passwordReference
         proto.providerConfiguration = [
+            Self.organizationIdKey: organizationId,
             Self.networkGroupIdKey: networkGroupId,
             Self.peerIdKey: peerId,
         ]
@@ -167,6 +174,7 @@ final class CCTunnelManager {
         manager = nil
         status = .disconnected
         activeLabel = nil
+        configuredOrganizationId = nil
         configuredNetworkGroupId = nil
         configuredPeerId = nil
     }
@@ -174,6 +182,7 @@ final class CCTunnelManager {
     private func syncConfiguredIds() {
         let providerConfig = (manager?.protocolConfiguration as? NETunnelProviderProtocol)?
             .providerConfiguration
+        configuredOrganizationId = providerConfig?[Self.organizationIdKey] as? String
         configuredNetworkGroupId = providerConfig?[Self.networkGroupIdKey] as? String
         configuredPeerId = providerConfig?[Self.peerIdKey] as? String
     }

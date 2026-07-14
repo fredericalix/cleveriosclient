@@ -28,9 +28,16 @@ struct AttachDeviceView: View {
     @State private var deviceName: String = UIDevice.current.name
     @State private var phase: Phase = .idle
     @State private var errorMessage: String?
+    @State private var showingReplaceConfirmation = false
     @State private var cancellables = Set<AnyCancellable>()
 
     private var tunnel: CCTunnelManager { appState.tunnel }
+
+    /// The single VPN profile currently belongs to ANOTHER network group: attaching here
+    /// overwrites its keychain private key, permanently invalidating that peer.
+    private var replacesOtherGroup: Bool {
+        tunnel.configuredNetworkGroupId != nil && tunnel.configuredNetworkGroupId != networkGroupId
+    }
 
     private enum Phase: Equatable {
         case idle       // waiting for the user to confirm the device name
@@ -56,6 +63,13 @@ struct AttachDeviceView: View {
                     Button("Close") { dismiss() }
                 }
             }
+            .task { await tunnel.load() }
+            .alert("Replace the current VPN?", isPresented: $showingReplaceConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Replace & Connect", role: .destructive) { start() }
+            } message: {
+                Text("This device is already attached to another network group. Attaching it here replaces the VPN configuration, and the previous peer — permanently unusable without its key — will be deleted from that group.")
+            }
         }
     }
 
@@ -72,9 +86,25 @@ struct AttachDeviceView: View {
                 Text("A WireGuard key pair is generated on this device and stored in the keychain — the private key never leaves it. iOS will ask you to allow adding a VPN configuration.")
             }
 
+            if replacesOtherGroup {
+                Section {
+                    Label {
+                        Text("This device is already attached to another network group. Attaching it here replaces that VPN configuration and permanently invalidates the previous peer (it will be deleted).")
+                            .font(.caption)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+
             Section {
                 Button {
-                    start()
+                    if replacesOtherGroup {
+                        showingReplaceConfirmation = true
+                    } else {
+                        start()
+                    }
                 } label: {
                     Label("Attach & Connect", systemImage: "personalhotspot")
                 }
@@ -162,6 +192,20 @@ struct AttachDeviceView: View {
         errorMessage = nil
         let label = deviceName.trimmingCharacters(in: .whitespaces)
 
+        // Capture the previous attachment now — connect() overwrites the configured ids.
+        // Its private key is about to be replaced in the keychain, so that peer is dead;
+        // it gets cleaned up server-side after the new attach succeeds. Profiles created
+        // before organizationId was persisted can't be cleaned automatically (nil orgId).
+        let previousPeer: (organizationId: String, networkGroupId: String, peerId: String)?
+        if replacesOtherGroup,
+           let previousOrgId = tunnel.configuredOrganizationId,
+           let previousNgId = tunnel.configuredNetworkGroupId,
+           let previousPeerId = tunnel.configuredPeerId {
+            previousPeer = (previousOrgId, previousNgId, previousPeerId)
+        } else {
+            previousPeer = nil
+        }
+
         WireGuardProvisioning.provision(
             sdk: cleverCloudSDK,
             organizationId: orgId,
@@ -183,12 +227,40 @@ struct AttachDeviceView: View {
                     await tunnel.connect(
                         confString: config,
                         label: label,
+                        organizationId: orgId,
                         networkGroupId: networkGroupId,
                         peerId: peerId
                     )
                 }
+                if let previousPeer {
+                    cleanUpPreviousPeer(previousPeer)
+                }
             }
         )
         .store(in: &cancellables)
+    }
+
+    /// Best-effort removal of the now-unusable peer left in the previously attached network
+    /// group (its private key was just overwritten). Failures are only logged: the peer is a
+    /// zombie either way and can still be removed manually from that group's Peers tab.
+    private func cleanUpPreviousPeer(_ previous: (organizationId: String, networkGroupId: String, peerId: String)) {
+        cleverCloudSDK.networkGroups
+            .deleteExternalPeerCascading(
+                organizationId: previous.organizationId,
+                networkGroupId: previous.networkGroupId,
+                peerId: previous.peerId
+            )
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        debugLog("⚠️ [AttachDeviceView] Could not clean up previous peer \(previous.peerId) in \(previous.networkGroupId): \(error.localizedDescription)")
+                    } else {
+                        debugLog("ℹ️ [AttachDeviceView] Cleaned up previous peer \(previous.peerId) in \(previous.networkGroupId)")
+                    }
+                },
+                receiveValue: { _ in }
+            )
+            .store(in: &cancellables)
     }
 }
