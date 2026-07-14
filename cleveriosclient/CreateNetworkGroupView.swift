@@ -11,7 +11,6 @@ struct CreateNetworkGroupView: View {
 
     @State private var name = ""
     @State private var description = ""
-    @State private var cidr = ""
 
     @State private var isCreating = false
     @State private var showingConfirmation = false
@@ -32,16 +31,6 @@ struct CreateNetworkGroupView: View {
                     TextField("Description (optional)", text: $description)
                 } header: {
                     Text("Network group")
-                }
-
-                Section {
-                    TextField("CIDR (optional, e.g. 10.0.0.0/16)", text: $cidr)
-                        .autocorrectionDisabled(true)
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Network")
-                } footer: {
-                    Text("Leave the CIDR empty to let Clever Cloud assign one automatically. Network groups are not tied to a region.")
                 }
 
                 if organizationId == nil {
@@ -81,13 +70,12 @@ struct CreateNetworkGroupView: View {
 
     private func create() {
         guard let organizationId else { return }
-        let trimmedCidr = cidr.trimmingCharacters(in: .whitespaces)
         let trimmedDescription = description.trimmingCharacters(in: .whitespaces)
 
+        // No CIDR field: Clever Cloud always assigns the network range itself.
         let request = CCNetworkGroupCreate(
             name: name.trimmingCharacters(in: .whitespaces),
-            description: trimmedDescription.isEmpty ? nil : trimmedDescription,
-            cidr: trimmedCidr.isEmpty ? nil : trimmedCidr
+            description: trimmedDescription.isEmpty ? nil : trimmedDescription
         )
 
         isCreating = true
