@@ -94,6 +94,21 @@ final class CCTunnelManager {
     func connect(confString: String, label: String, organizationId: String, networkGroupId: String, peerId: String) async {
         if !loaded { await load() }
         status = .connecting
+
+        // A tunnel from a previous attachment may still be running with the OLD configuration:
+        // startVPNTunnel() is a no-op on a live connection, so the extension would silently keep
+        // routing to the previous network group. Stop it and wait for the teardown first.
+        if let connection = manager?.connection,
+           connection.status == .connected || connection.status == .connecting || connection.status == .reasserting {
+            debugLog("ℹ️ [CCTunnelManager] Stopping the running tunnel before reconfiguring")
+            connection.stopVPNTunnel()
+            var waited = 0
+            while connection.status != .disconnected && connection.status != .invalid && waited < 50 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms, max ~5s
+                waited += 1
+            }
+        }
+
         let mgr = manager ?? NETunnelProviderManager()
 
         // The conf contains the private key: keychain only, referenced from the profile.
